@@ -32,7 +32,9 @@ report_failure() {
   local extra=""
   local cfg; cfg="$(ls -t "$ROOT"/build/*/config.log 2>/dev/null | head -1 || true)"
   [ -n "$cfg" ] && extra="$(printf '\n--- tail of %s ---\n' "${cfg#$ROOT/}"; tail -n 25 "$cfg")"
-  local body; body="$(printf 'Step: %s (line %s, exit %s)\n' "$STEP" "$line" "$code"; tail -n 60 "$BUILD_LOG" | cut -c1-220; printf '%s' "$extra")"
+  # Only the output of the failing step, newest last, short lines (annotations are size-limited).
+  local stepout; stepout="$(awk '/^==> /{buf=""} {buf=buf $0 "\n"} END{printf "%s", buf}' "$BUILD_LOG" | grep -v '^clang ' | tail -n 40 | cut -c1-160)"
+  local body; body="$(printf 'Step: %s (line %s, exit %s)\n' "$STEP" "$line" "$code"; printf '%s' "$stepout"; printf '%s' "$extra")"
   body="${body//'%'/'%25'}"; body="${body//$'\r'/}"; body="${body//$'\n'/'%0A'}"
   echo "::error title=Build failed during: ${STEP//[:,]/ }::$body"
   exit "$code"
