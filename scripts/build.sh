@@ -109,7 +109,7 @@ lipo -info "$WORK/minipro" "$WORK/ChipBurner"
 log "Checking that nothing links to Homebrew or other non-system libraries"
 for BIN in "$WORK/minipro" "$WORK/ChipBurner"; do
   otool -L "$BIN"
-  if otool -L "$BIN" | tail -n +2 | grep -v -E '^\s+(/usr/lib/|/System/Library/|@rpath/libswift)' ; then
+  if otool -L "$BIN" | grep -E '^[[:space:]]' | grep -v -E '^[[:space:]]+(/usr/lib/|/System/Library/|@rpath/libswift)' ; then
     echo "ERROR: $BIN links to a library that is not on every Mac"; false
   fi
 done
