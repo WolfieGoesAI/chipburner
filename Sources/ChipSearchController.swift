@@ -91,7 +91,7 @@ final class ChipSearchController: NSObject, NSTableViewDataSource, NSTableViewDe
         let token = searchToken
         countLabel.stringValue = "Searching…"
         DispatchQueue.global(qos: .userInitiated).async {
-            let r = Minipro.shared.runSync(["-L", query])
+            let r = Minipro.shared.runSync(["-q", Minipro.shared.programmerType, "-L", query])
             let names = r.output
                 .components(separatedBy: .newlines)
                 .map { $0.trimmingCharacters(in: .whitespaces) }

@@ -288,6 +288,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
                 let lines = r.output.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
                 let found = lines.first { $0.lowercased().contains("found") } ?? lines.first ?? "No answer"
                 self.programmerLabel.stringValue = r.status == 0 ? found : "Not found – \(found)"
+                if r.status == 0 { Minipro.shared.updateProgrammerType(from: r.output) }
                 self.log("Programmer check:\n" + r.output.trimmingCharacters(in: .whitespacesAndNewlines))
             }
         }
@@ -306,7 +307,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
 
     @objc func chipInfo(_ sender: Any?) {
         guard requireChip() else { return }
-        runJob("Chip info", ["-d", chip])
+        runJob("Chip info", ["-q", Minipro.shared.programmerType, "-d", chip])
     }
 
     @objc func readChip(_ sender: Any?) {

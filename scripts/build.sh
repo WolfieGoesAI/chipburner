@@ -152,7 +152,7 @@ MANFILE="$(find "$WORK/src/minipro-git" -name 'minipro.1' -print -quit)"
 MANTXT="$( (mandoc -T ascii "$MANFILE" 2>/dev/null || groff -man -Tascii "$MANFILE" 2>/dev/null || cat "$MANFILE") | col -b | sed 's/\\-/-/g')"
 missing=0
 OPTDOC=""
-for opt in -k -L -d -p -r -w -m -b -E -x -y -s -e -v --infoic --logicic; do
+for opt in -q -k -L -d -p -r -w -m -b -E -x -y -s -e -v --infoic --logicic; do
   lines="$(grep -E -A2 "^[[:space:]]*(-[A-Za-z], )?$opt([,[:space:]]|$)" <<<"$MANTXT" | head -3 | tr -s ' ' || true)"
   if [ -z "$lines" ]; then echo "MISSING OPTION: $opt"; missing=1; else OPTDOC+="$lines"$'\n'; fi
 done
@@ -168,7 +168,7 @@ echo "::notice title=minipro programmer selection::$NOTE"
 log "Smoke test: chip database search for 27C256"
 DBARGS=(--infoic "$APP/Contents/Resources/minipro/infoic.xml")
 [ -f "$APP/Contents/Resources/minipro/logicic.xml" ] && DBARGS+=(--logicic "$APP/Contents/Resources/minipro/logicic.xml")
-SEARCH="$("$APP/Contents/MacOS/minipro" "${DBARGS[@]}" -L 27C256 2>&1 || true)"
+SEARCH="$("$APP/Contents/MacOS/minipro" "${DBARGS[@]}" -q TL866A -L 27C256 2>&1 || true)"
 echo "$SEARCH" | head -20
 NOTE="$(head -15 <<<"$SEARCH")"; NOTE="${NOTE//'%'/'%25'}"; NOTE="${NOTE//$'\n'/'%0A'}"
 echo "::notice title=Chip search for 27C256::$NOTE"
