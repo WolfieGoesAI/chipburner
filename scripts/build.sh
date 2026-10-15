@@ -19,7 +19,25 @@ MINIPRO_REF="${MINIPRO_REF:-0.7.4}"
 LIBUSB_VERSION="${LIBUSB_VERSION:-1.0.27}"
 ARCHS=(x86_64 arm64)
 
-log() { printf '\n==> %s\n' "$*"; }
+log() { printf '\n==> %s\n' "$*"; STEP="$*"; }
+STEP="start"
+
+# Keep a copy of all output so a failure can be reported as a GitHub annotation
+# (annotations are readable through the API even where the raw log is not).
+BUILD_LOG="$(mktemp -t chipburner-build)"
+exec > >(tee "$BUILD_LOG") 2>&1
+report_failure() {
+  local code=$? line=$1
+  sleep 1
+  local extra=""
+  local cfg; cfg="$(ls -t "$ROOT"/build/*/config.log 2>/dev/null | head -1 || true)"
+  [ -n "$cfg" ] && extra="$(printf '\n--- tail of %s ---\n' "${cfg#$ROOT/}"; tail -n 25 "$cfg")"
+  local body; body="$(printf 'Step: %s (line %s, exit %s)\n' "$STEP" "$line" "$code"; tail -n 60 "$BUILD_LOG" | cut -c1-220; printf '%s' "$extra")"
+  body="${body//'%'/'%25'}"; body="${body//$'\r'/}"; body="${body//$'\n'/'%0A'}"
+  echo "::error title=Build failed during: ${STEP//[:,]/ }::$body"
+  exit "$code"
+}
+trap 'report_failure $LINENO' ERR
 
 min_for() { [ "$1" = x86_64 ] && echo 10.14 || echo 11.0; }
 swift_min_for() { [ "$1" = x86_64 ] && echo 10.14.4 || echo 11.0; }
@@ -38,7 +56,7 @@ exec "$REAL_PKG_CONFIG" --static "$@"
 EOF
 chmod +x "$WORK/bin/pkg-config"
 export REAL_PKG_CONFIG="$(command -v pkg-config || command -v pkgconf)"
-[ -n "$REAL_PKG_CONFIG" ] || { echo "pkg-config is required"; exit 1; }
+[ -n "$REAL_PKG_CONFIG" ] || { echo "pkg-config is required"; false; }
 
 # ---------- sources ----------
 log "Fetching libusb $LIBUSB_VERSION"
@@ -90,7 +108,7 @@ log "Checking that nothing links to Homebrew or other non-system libraries"
 for BIN in "$WORK/minipro" "$WORK/ChipBurner"; do
   otool -L "$BIN"
   if otool -L "$BIN" | tail -n +2 | grep -v -E '^\s+(/usr/lib/|/System/Library/|@rpath/libswift)' ; then
-    echo "ERROR: $BIN links to a library that is not on every Mac"; exit 1
+    echo "ERROR: $BIN links to a library that is not on every Mac"; false
   fi
 done
 
@@ -101,7 +119,7 @@ LOGICIC="$(find "$WORK/src/minipro-git" -name logicic.xml -print -quit)"
 if [ -z "$INFOIC" ]; then
   echo "ERROR: infoic.xml is not in the minipro source tree."
   echo "See minipro's README for how the chip database is obtained, then place it in Resources/minipro/."
-  [ -f "$ROOT/Resources/minipro/infoic.xml" ] || exit 1
+  [ -f "$ROOT/Resources/minipro/infoic.xml" ] || false
   INFOIC="$ROOT/Resources/minipro/infoic.xml"
   LOGICIC="$ROOT/Resources/minipro/logicic.xml"
 fi
@@ -132,18 +150,18 @@ missing=0
 for opt in -k -L -d -p -r -w -m -b -E -x -y -s -e -v; do
   if ! grep -q -E "(^|[[:space:],])$opt([,[:space:]]|$)" <<<"$HELP"; then echo "MISSING OPTION: $opt"; missing=1; fi
 done
-[ "$missing" = 0 ] || { echo "ERROR: minipro's options differ from what ChipBurner expects"; exit 1; }
+[ "$missing" = 0 ] || { echo "ERROR: minipro's options differ from what ChipBurner expects"; false; }
 
 log "Smoke test: chip database search for 27C256"
 DBARGS=()
 grep -q -- '--infoic' <<<"$HELP" && DBARGS+=(--infoic "$APP/Contents/Resources/minipro/infoic.xml")
 grep -q -- '--logicic' <<<"$HELP" && [ -f "$APP/Contents/Resources/minipro/logicic.xml" ] && DBARGS+=(--logicic "$APP/Contents/Resources/minipro/logicic.xml")
 if [ ${#DBARGS[@]} -eq 0 ]; then
-  echo "ERROR: this minipro has no --infoic option, so the bundled database can't be used"; exit 1
+  echo "ERROR: this minipro has no --infoic option, so the bundled database can't be used"; false
 fi
 SEARCH="$("$APP/Contents/MacOS/minipro" "${DBARGS[@]}" -L 27C256 2>&1 || true)"
 echo "$SEARCH" | head -20
-grep -q -i '27C256' <<<"$SEARCH" || { echo "ERROR: chip search returned nothing"; exit 1; }
+grep -q -i '27C256' <<<"$SEARCH" || { echo "ERROR: chip search returned nothing"; false; }
 
 # ---------- sign and package ----------
 log "Ad-hoc signing"
