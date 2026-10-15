@@ -161,6 +161,10 @@ NOTE="${OPTDOC//'%'/'%25'}"; NOTE="${NOTE//$'\n'/'%0A'}"
 echo "::notice title=minipro options used by ChipBurner::$NOTE"
 [ "$missing" = 0 ] || { echo "ERROR: minipro's options differ from what ChipBurner expects"; false; }
 
+PROGDOC="$(grep -E -i -B1 -A3 'programmer|tl866a' <<<"$MANTXT" | head -40 | tr -s ' ')"
+NOTE="${PROGDOC//'%'/'%25'}"; NOTE="${NOTE//$'\n'/'%0A'}"
+echo "::notice title=minipro programmer selection::$NOTE"
+
 log "Smoke test: chip database search for 27C256"
 DBARGS=(--infoic "$APP/Contents/Resources/minipro/infoic.xml")
 [ -f "$APP/Contents/Resources/minipro/logicic.xml" ] && DBARGS+=(--logicic "$APP/Contents/Resources/minipro/logicic.xml")
