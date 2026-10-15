@@ -1,0 +1,156 @@
+#!/bin/bash
+# Builds ChipBurner.app (universal: Intel + Apple silicon, macOS 10.14.4+) on a macOS machine
+# with Xcode command-line tools. Used by the GitHub workflow; can also be run by hand.
+#
+#   scripts/build.sh            -> dist/ChipBurner-<version>.zip
+#
+# Environment overrides:
+#   APP_VERSION     version string (default 0.1.0)
+#   MINIPRO_REF     minipro git tag/branch (default 0.7.4, falls back to master)
+#   LIBUSB_VERSION  libusb release (default 1.0.27)
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+WORK="$ROOT/build"
+DIST="$ROOT/dist"
+APP_VERSION="${APP_VERSION:-0.1.0}"
+BUILD_NUMBER="${BUILD_NUMBER:-1}"
+MINIPRO_REF="${MINIPRO_REF:-0.7.4}"
+LIBUSB_VERSION="${LIBUSB_VERSION:-1.0.27}"
+ARCHS=(x86_64 arm64)
+
+log() { printf '\n==> %s\n' "$*"; }
+
+min_for() { [ "$1" = x86_64 ] && echo 10.14 || echo 11.0; }
+swift_min_for() { [ "$1" = x86_64 ] && echo 10.14.4 || echo 11.0; }
+host_for() { [ "$1" = x86_64 ] && echo x86_64-apple-darwin || echo aarch64-apple-darwin; }
+
+rm -rf "$WORK" "$DIST"
+mkdir -p "$WORK/src" "$DIST"
+SDK="$(xcrun --sdk macosx --show-sdk-path)"
+
+# A pkg-config wrapper that always asks for static link flags, so minipro links libusb statically
+# (libusb's private flags pull in the IOKit/CoreFoundation/Security frameworks it needs).
+mkdir -p "$WORK/bin"
+cat > "$WORK/bin/pkg-config" <<'EOF'
+#!/bin/bash
+exec "$REAL_PKG_CONFIG" --static "$@"
+EOF
+chmod +x "$WORK/bin/pkg-config"
+export REAL_PKG_CONFIG="$(command -v pkg-config || command -v pkgconf)"
+[ -n "$REAL_PKG_CONFIG" ] || { echo "pkg-config is required"; exit 1; }
+
+# ---------- sources ----------
+log "Fetching libusb $LIBUSB_VERSION"
+curl -fsSL "https://github.com/libusb/libusb/releases/download/v$LIBUSB_VERSION/libusb-$LIBUSB_VERSION.tar.bz2" \
+  -o "$WORK/src/libusb.tar.bz2"
+
+log "Fetching minipro ($MINIPRO_REF)"
+if ! git clone --depth 1 --branch "$MINIPRO_REF" https://gitlab.com/DavidGriffith/minipro.git "$WORK/src/minipro-git"; then
+  echo "Tag $MINIPRO_REF not found, using master"
+  git clone --depth 1 https://gitlab.com/DavidGriffith/minipro.git "$WORK/src/minipro-git"
+fi
+MINIPRO_DESC="$(git -C "$WORK/src/minipro-git" describe --tags --always 2>/dev/null || echo unknown)"
+echo "minipro source: $MINIPRO_DESC"
+
+# ---------- per-architecture builds ----------
+for ARCH in "${ARCHS[@]}"; do
+  MIN="$(min_for "$ARCH")"
+  export MACOSX_DEPLOYMENT_TARGET="$MIN"
+  CC_ARCH="clang -arch $ARCH -isysroot $SDK -mmacosx-version-min=$MIN"
+  PREFIX="$WORK/$ARCH"
+
+  log "libusb for $ARCH (min macOS $MIN)"
+  rm -rf "$WORK/libusb-$ARCH" && mkdir -p "$WORK/libusb-$ARCH"
+  tar -xjf "$WORK/src/libusb.tar.bz2" -C "$WORK/libusb-$ARCH" --strip-components=1
+  ( cd "$WORK/libusb-$ARCH"
+    CC="$CC_ARCH" ./configure --host="$(host_for "$ARCH")" --prefix="$PREFIX" \
+      --disable-shared --enable-static --disable-dependency-tracking >/dev/null
+    make -j"$(sysctl -n hw.ncpu)" >/dev/null
+    make install >/dev/null )
+
+  log "minipro for $ARCH"
+  rm -rf "$WORK/minipro-$ARCH" && cp -R "$WORK/src/minipro-git" "$WORK/minipro-$ARCH"
+  ( cd "$WORK/minipro-$ARCH"
+    PATH="$WORK/bin:$PATH" PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig" \
+      make -j"$(sysctl -n hw.ncpu)" CC="$CC_ARCH" )
+  cp "$WORK/minipro-$ARCH/minipro" "$WORK/minipro.$ARCH"
+
+  log "ChipBurner for $ARCH"
+  xcrun swiftc -O -sdk "$SDK" -target "$ARCH-apple-macos$(swift_min_for "$ARCH")" \
+    "$ROOT"/Sources/*.swift -o "$WORK/ChipBurner.$ARCH"
+done
+
+log "Making universal binaries"
+lipo -create "$WORK"/minipro.* -output "$WORK/minipro"
+lipo -create "$WORK"/ChipBurner.* -output "$WORK/ChipBurner"
+lipo -info "$WORK/minipro" "$WORK/ChipBurner"
+
+log "Checking that nothing links to Homebrew or other non-system libraries"
+for BIN in "$WORK/minipro" "$WORK/ChipBurner"; do
+  otool -L "$BIN"
+  if otool -L "$BIN" | tail -n +2 | grep -v -E '^\s+(/usr/lib/|/System/Library/|@rpath/libswift)' ; then
+    echo "ERROR: $BIN links to a library that is not on every Mac"; exit 1
+  fi
+done
+
+# ---------- chip database ----------
+log "Locating the minipro chip database"
+INFOIC="$(find "$WORK/src/minipro-git" -name infoic.xml -print -quit)"
+LOGICIC="$(find "$WORK/src/minipro-git" -name logicic.xml -print -quit)"
+if [ -z "$INFOIC" ]; then
+  echo "ERROR: infoic.xml is not in the minipro source tree."
+  echo "See minipro's README for how the chip database is obtained, then place it in Resources/minipro/."
+  [ -f "$ROOT/Resources/minipro/infoic.xml" ] || exit 1
+  INFOIC="$ROOT/Resources/minipro/infoic.xml"
+  LOGICIC="$ROOT/Resources/minipro/logicic.xml"
+fi
+echo "infoic:  $INFOIC"
+echo "logicic: ${LOGICIC:-<none>}"
+
+# ---------- assemble the app ----------
+APP="$WORK/ChipBurner.app"
+log "Assembling $APP"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/minipro"
+cp "$WORK/ChipBurner" "$WORK/minipro" "$APP/Contents/MacOS/"
+cp "$INFOIC" "$APP/Contents/Resources/minipro/"
+[ -n "${LOGICIC:-}" ] && cp "$LOGICIC" "$APP/Contents/Resources/minipro/"
+cp "$WORK/src/minipro-git/LICENSE"* "$APP/Contents/Resources/minipro/" 2>/dev/null || true
+cat > "$APP/Contents/Resources/minipro/SOURCE.txt" <<EOF
+This app runs minipro ($MINIPRO_DESC), licensed under the GNU GPL v3.
+Source code: https://gitlab.com/DavidGriffith/minipro
+libusb $LIBUSB_VERSION (LGPL 2.1): https://github.com/libusb/libusb
+EOF
+sed -e "s/__VERSION__/$APP_VERSION/" -e "s/__BUILD__/$BUILD_NUMBER/" "$ROOT/Resources/Info.plist" > "$APP/Contents/Info.plist"
+plutil -lint "$APP/Contents/Info.plist"
+
+# ---------- smoke tests (no programmer needed) ----------
+log "Smoke test: minipro help and options this app uses"
+HELP="$("$APP/Contents/MacOS/minipro" --help 2>&1 || true)"
+echo "$HELP"
+missing=0
+for opt in -k -L -d -p -r -w -m -b -E -x -y -s -e -v; do
+  if ! grep -q -E "(^|[[:space:],])$opt([,[:space:]]|$)" <<<"$HELP"; then echo "MISSING OPTION: $opt"; missing=1; fi
+done
+[ "$missing" = 0 ] || { echo "ERROR: minipro's options differ from what ChipBurner expects"; exit 1; }
+
+log "Smoke test: chip database search for 27C256"
+DBARGS=()
+grep -q -- '--infoic' <<<"$HELP" && DBARGS+=(--infoic "$APP/Contents/Resources/minipro/infoic.xml")
+grep -q -- '--logicic' <<<"$HELP" && [ -f "$APP/Contents/Resources/minipro/logicic.xml" ] && DBARGS+=(--logicic "$APP/Contents/Resources/minipro/logicic.xml")
+if [ ${#DBARGS[@]} -eq 0 ]; then
+  echo "ERROR: this minipro has no --infoic option, so the bundled database can't be used"; exit 1
+fi
+SEARCH="$("$APP/Contents/MacOS/minipro" "${DBARGS[@]}" -L 27C256 2>&1 || true)"
+echo "$SEARCH" | head -20
+grep -q -i '27C256' <<<"$SEARCH" || { echo "ERROR: chip search returned nothing"; exit 1; }
+
+# ---------- sign and package ----------
+log "Ad-hoc signing"
+codesign --force --sign - "$APP/Contents/MacOS/minipro"
+codesign --force --sign - "$APP"
+codesign --verify --verbose "$APP"
+
+ZIP="$DIST/ChipBurner-$APP_VERSION.zip"
+ditto -c -k --keepParent "$APP" "$ZIP"
+log "Done: $ZIP"

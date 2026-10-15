@@ -1,0 +1,44 @@
+name: Build ChipBurner
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      minipro_ref:
+        description: minipro tag or branch
+        default: '0.7.4'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build tools
+        run: brew install autoconf automake libtool pkgconf srecord || true
+
+      - name: Build app
+        env:
+          APP_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('0.1.{0}', github.run_number) }}
+          BUILD_NUMBER: ${{ github.run_number }}
+          MINIPRO_REF: ${{ github.event.inputs.minipro_ref || '0.7.4' }}
+        run: |
+          APP_VERSION="${APP_VERSION#v}" bash scripts/build.sh
+
+      - name: Upload app
+        uses: actions/upload-artifact@v4
+        with:
+          name: ChipBurner
+          path: dist/*.zip
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip
