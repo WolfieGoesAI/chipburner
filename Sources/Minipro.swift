@@ -17,20 +17,14 @@ final class Minipro {
         dbArgs = computeDBArgs()   // once, at first use, before any background thread touches it
     }
 
-    /// minipro 0.7 accepts --infoic/--logicic to point at the database.
-    /// Checked once against the binary's own help text so an older build still works.
+    /// minipro 0.7 takes --infoic/--logicic to point at the database bundled in the app
+    /// (the build checks that this minipro documents both options).
     private var dbArgs: [String] = []
 
     private func computeDBArgs() -> [String] {
-        guard isAvailable else { return [] }
-        let help = runSync(["--help"], includeDB: false).output
         var args: [String] = []
-        if help.contains("--infoic"), let f = infoic, FileManager.default.fileExists(atPath: f.path) {
-            args += ["--infoic", f.path]
-        }
-        if help.contains("--logicic"), let f = logicic, FileManager.default.fileExists(atPath: f.path) {
-            args += ["--logicic", f.path]
-        }
+        if let f = infoic, FileManager.default.fileExists(atPath: f.path) { args += ["--infoic", f.path] }
+        if let f = logicic, FileManager.default.fileExists(atPath: f.path) { args += ["--logicic", f.path] }
         return args
     }
 

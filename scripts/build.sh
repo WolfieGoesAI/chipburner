@@ -145,24 +145,29 @@ sed -e "s/__VERSION__/$APP_VERSION/" -e "s/__BUILD__/$BUILD_NUMBER/" "$ROOT/Reso
 plutil -lint "$APP/Contents/Info.plist"
 
 # ---------- smoke tests (no programmer needed) ----------
-log "Smoke test: minipro help and options this app uses"
-HELP="$("$APP/Contents/MacOS/minipro" --help 2>&1 || true)"
-echo "$HELP"
+log "Smoke test: minipro options this app uses (from minipro's manual page)"
+"$APP/Contents/MacOS/minipro" --version 2>&1 | head -3 || true
+MANFILE="$(find "$WORK/src/minipro-git" -name 'minipro.1' -print -quit)"
+[ -n "$MANFILE" ] || { echo "ERROR: minipro.1 manual page not found in the source tree"; false; }
+MANTXT="$( (mandoc -T ascii "$MANFILE" 2>/dev/null || groff -man -Tascii "$MANFILE" 2>/dev/null || cat "$MANFILE") | col -b | sed 's/\\-/-/g')"
 missing=0
-for opt in -k -L -d -p -r -w -m -b -E -x -y -s -e -v; do
-  if ! grep -q -E "(^|[[:space:],])$opt([,[:space:]]|$)" <<<"$HELP"; then echo "MISSING OPTION: $opt"; missing=1; fi
+OPTDOC=""
+for opt in -k -L -d -p -r -w -m -b -E -x -y -s -e -v --infoic --logicic; do
+  lines="$(grep -E -A2 "^[[:space:]]*(-[A-Za-z], )?$opt([,[:space:]]|$)" <<<"$MANTXT" | head -3 | tr -s ' ' || true)"
+  if [ -z "$lines" ]; then echo "MISSING OPTION: $opt"; missing=1; else OPTDOC+="$lines"$'\n'; fi
 done
+echo "$OPTDOC"
+NOTE="${OPTDOC//'%'/'%25'}"; NOTE="${NOTE//$'\n'/'%0A'}"
+echo "::notice title=minipro options used by ChipBurner::$NOTE"
 [ "$missing" = 0 ] || { echo "ERROR: minipro's options differ from what ChipBurner expects"; false; }
 
 log "Smoke test: chip database search for 27C256"
-DBARGS=()
-grep -q -- '--infoic' <<<"$HELP" && DBARGS+=(--infoic "$APP/Contents/Resources/minipro/infoic.xml")
-grep -q -- '--logicic' <<<"$HELP" && [ -f "$APP/Contents/Resources/minipro/logicic.xml" ] && DBARGS+=(--logicic "$APP/Contents/Resources/minipro/logicic.xml")
-if [ ${#DBARGS[@]} -eq 0 ]; then
-  echo "ERROR: this minipro has no --infoic option, so the bundled database can't be used"; false
-fi
+DBARGS=(--infoic "$APP/Contents/Resources/minipro/infoic.xml")
+[ -f "$APP/Contents/Resources/minipro/logicic.xml" ] && DBARGS+=(--logicic "$APP/Contents/Resources/minipro/logicic.xml")
 SEARCH="$("$APP/Contents/MacOS/minipro" "${DBARGS[@]}" -L 27C256 2>&1 || true)"
 echo "$SEARCH" | head -20
+NOTE="$(head -15 <<<"$SEARCH")"; NOTE="${NOTE//'%'/'%25'}"; NOTE="${NOTE//$'\n'/'%0A'}"
+echo "::notice title=Chip search for 27C256::$NOTE"
 grep -q -i '27C256' <<<"$SEARCH" || { echo "ERROR: chip search returned nothing"; false; }
 
 # ---------- sign and package ----------
