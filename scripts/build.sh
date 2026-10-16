@@ -165,6 +165,15 @@ PROGDOC="$(grep -E -i -B1 -A3 'programmer|tl866a' <<<"$MANTXT" | head -40 | tr -
 NOTE="${PROGDOC//'%'/'%25'}"; NOTE="${NOTE//$'\n'/'%0A'}"
 echo "::notice title=minipro programmer selection::$NOTE"
 
+# Diagnostics for EPROM ID / auto-detect support (printed as annotations)
+IDDOC="$(grep -E -i -B1 -A3 'auto|detect|chip id|signature|id mismatch|-x,|-y,' <<<"$MANTXT" | head -45 | tr -s ' ')"
+NOTE="${IDDOC//'%'/'%25'}"; NOTE="${NOTE//$'\n'/'%0A'}"
+echo "::notice title=minipro ID and auto-detect docs::$NOTE"
+IC="$APP/Contents/Resources/minipro/infoic.xml"
+IDS="$(grep -E -i 'name="(AM27C256|M27C256B|AT27C256R|27C512|M27C512|AM27C010|M27C801|W27C512|AT28C256|SST39SF040)[@"]' "$IC" | head -14 | sed -E 's/[[:space:]]+/ /g' | cut -c1-300)"
+NOTE="${IDS//'%'/'%25'}"; NOTE="${NOTE//$'\n'/'%0A'}"
+echo "::notice title=infoic entries for common chips::$NOTE"
+
 log "Smoke test: chip database search for 27C256"
 DBARGS=(--infoic "$APP/Contents/Resources/minipro/infoic.xml")
 [ -f "$APP/Contents/Resources/minipro/logicic.xml" ] && DBARGS+=(--logicic "$APP/Contents/Resources/minipro/logicic.xml")
