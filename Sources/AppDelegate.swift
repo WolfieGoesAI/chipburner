@@ -11,7 +11,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.window?.center()
         NSApp.activate(ignoringOtherApps: true)
         if ProcessInfo.processInfo.environment["CHIPBURNER_SMOKETEST"] != nil {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            let shot = ProcessInfo.processInfo.environment["CHIPBURNER_SCREENSHOT"]
+            if shot != nil {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { controller.prepareScreenshot() }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                if let path = shot { controller.saveScreenshot(to: path) }
                 let ok = controller.smokeReport()
                 fflush(stdout)
                 exit(ok ? 0 : 1)

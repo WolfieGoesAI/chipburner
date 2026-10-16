@@ -1285,6 +1285,35 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
 
     // MARK: Smoke test
 
+    /// Fills the window with example content so a build screenshot shows a realistic state.
+    func prepareScreenshot() {
+        programmerLabel.stringValue = "TL866A"
+        selectChip("AM27C256@DIP28")
+        var d = Data(repeating: 0xFF, count: 0x8000)
+        let text = Array("ChipBurner example buffer – (C) 2026 – AM27C256 32K x 8 UV EPROM ".utf8)
+        for i in 0..<0x400 { d[i] = UInt8(truncatingIfNeeded: (i * 37) ^ (i >> 3)) }
+        for (i, b) in text.enumerated() { d[0x100 + i] = b }
+        buffer = d
+        bufferIsText = false
+        bufferExt = "bin"
+        bufferName = "example.bin"
+        updateBufferViews()
+        setStatus("Ready")
+    }
+
+    /// Renders the window's content to a PNG file.
+    func saveScreenshot(to path: String) {
+        guard let content = window?.contentView else { return }
+        content.layoutSubtreeIfNeeded()
+        guard let rep = content.bitmapImageRepForCachingDisplay(in: content.bounds) else { return }
+        content.cacheDisplay(in: content.bounds, to: rep)
+        if let png = rep.representation(using: .png, properties: [:]) {
+            try? png.write(to: URL(fileURLWithPath: path))
+            print("SMOKE screenshot saved: \(path)")
+        }
+    }
+
+
     /// Run by the build (CHIPBURNER_SMOKETEST=1): reports whether the window came up and where the
     /// main buttons ended up, so layout problems show in the build log.
     func smokeReport() -> Bool {
