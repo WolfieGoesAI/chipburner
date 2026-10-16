@@ -67,11 +67,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
                               styleMask: [.titled, .closable, .miniaturizable, .resizable],
                               backing: .buffered, defer: false)
         window.title = "ChipBurner"
-        window.minSize = NSSize(width: 820, height: 600)
-        _ = window.setFrameAutosaveName("ChipBurnerMain")
         self.init(window: window)
         window.delegate = self
         buildUI()
+        // Start at the smallest size the layout allows (the size you get by dragging the corner
+        // all the way in); that is also the minimum.
+        if let content = window.contentView {
+            content.layoutSubtreeIfNeeded()
+            let smallest = content.fittingSize
+            window.contentMinSize = smallest
+            window.setContentSize(smallest)
+        }
         chipField.stringValue = UserDefaults.standard.string(forKey: "lastChip") ?? ""
         updateBufferViews()
         updateEnabledState()
