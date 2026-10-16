@@ -197,6 +197,7 @@ note "JED decoder test" "$(grep -v '^;' <<<"$GT" | tail -40)"
 # Extra diagnostics: add diag "title" "text" lines here; the workflow prints them as notices.
 DIAG=""
 diag() { DIAG+="### $1"$'\n'"$2"$'\n\n'; }
+diag "Fuses & Locks families" "$(grep -E '^(FL|FUSES)' <<<"$DBT")"
 printf '%s' "$DIAG" > "$ROOT/diag.txt"
 
 # ---------- sign and package ----------
