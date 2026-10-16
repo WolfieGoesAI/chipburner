@@ -215,7 +215,7 @@ note "JED decoder test" "$(grep -v '^;' <<<"$GT" | tail -40)"
 DIAG=""
 diag() { DIAG+="### $1"$'\n'"$2"$'\n\n'; }
 diag "minipro source" "$MINIPRO_DESC"$'\n'"$("$APP/Contents/MacOS/minipro" --version 2>&1 | head -5)"
-diag "Test-related chip types" "$(grep -E '^(SRAM|DRAMLOGIC|LOGICNAMES)' <<<"$DBT")"
+diag "Test-related chip types" "$(grep -E '^(SRAM|DRAMLOGIC|LOGICNAMES|TL866A entries)' <<<"$DBT")"
 diag "Fuses & Locks families" "$(grep -E '^(FL|FUSES)' <<<"$DBT")"
 printf '%s' "$DIAG" > "$ROOT/diag.txt"
 
