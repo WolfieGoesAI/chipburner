@@ -19,6 +19,8 @@ for n in ["AM27C256@DIP28", "M27C512@DIP28", "GAL16V8", "7400", "ATMEGA328P@DIP2
     print("  \(n): \(db.info(for: n, programmer: "TL866A")?.summary ?? "not found")")
 }
 let am = db.info(for: "AM27C256@DIP28", programmer: "TL866A")
+let stripped = String(decoding: ChipDatabase.stripComments(Data("<a><!-- x -- y --><b/><!--z--></a>".utf8)), as: UTF8.self)
+expect(stripped == "<a><b/></a>", "comments with -- inside are removed before parsing")
 expect(db.loadError == nil, "the whole database file parses")
 expect(db.databaseName(for: "TL866A") != nil, "the TL866A section is present")
 expect(db.count > 1000, "database has entries")

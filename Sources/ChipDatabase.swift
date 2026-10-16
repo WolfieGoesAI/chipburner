@@ -100,7 +100,10 @@ final class ChipDatabase {
         var types: [String] = []
         var errors: [String] = []
         for url in [infoic, logicic].compactMap({ $0 }) {
-            guard let parser = XMLParser(contentsOf: url) else { errors.append("Can't open \(url.lastPathComponent)"); continue }
+            guard let raw = try? Data(contentsOf: url) else { errors.append("Can't open \(url.lastPathComponent)"); continue }
+            // minipro's own reader accepts comments that strict XML forbids (e.g. containing "--"),
+            // so comments are removed before parsing; nothing in them is needed.
+            let parser = XMLParser(data: Self.stripComments(raw))
             let d = Delegate()
             parser.delegate = d
             if !parser.parse() {
@@ -119,6 +122,35 @@ final class ChipDatabase {
         loadError = errors.isEmpty ? nil : errors.joined(separator: "; ")
         isLoaded = true
         lock.unlock()
+    }
+
+    /// Removes every <!-- … --> comment (byte-level, so it is fast on the 19 MB file).
+    static func stripComments(_ data: Data) -> Data {
+        let open: [UInt8] = Array("<!--".utf8), close: [UInt8] = Array("-->".utf8)
+        var out = Data(capacity: data.count)
+        data.withUnsafeBytes { (buf: UnsafeRawBufferPointer) in
+            let b = buf.bindMemory(to: UInt8.self)
+            let n = b.count
+            var i = 0, copyFrom = 0
+            func matches(_ at: Int, _ pat: [UInt8]) -> Bool {
+                guard at + pat.count <= n else { return false }
+                for k in 0..<pat.count where b[at + k] != pat[k] { return false }
+                return true
+            }
+            while i < n {
+                if b[i] == 0x3C, matches(i, open) {
+                    out.append(b.baseAddress! + copyFrom, count: i - copyFrom)
+                    var j = i + 4
+                    while j < n && !matches(j, close) { j += 1 }
+                    i = min(n, j + 3)
+                    copyFrom = i
+                } else {
+                    i += 1
+                }
+            }
+            if copyFrom < n { out.append(b.baseAddress! + copyFrom, count: n - copyFrom) }
+        }
+        return out
     }
 
     /// The infoic database section that belongs to a programmer type (TL866A, TL866II, T48, T56).
