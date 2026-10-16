@@ -11,6 +11,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     private var running: Process?
     private var scanCancelled = false
     private var logWindow: NSWindow?
+    private let connectionPopup = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let pinCheckBox = NSButton(checkboxWithTitle: "Check pin contact first", target: nil, action: nil)
+    private let voltageLabel = NSTextField(labelWithString: "Voltages: chip defaults")
+    private var voltages = VoltageOverrides()
+    private var voltagesChip = ""
+    private var caps: [String: ChipCapabilities] = [:]   // "PROGRAMMER:CHIP" -> what minipro -d reports
+    private var capsPending = Set<String>()
     private(set) var isBusy = false { didSet { updateEnabledState() } }
 
     // MARK: Views
@@ -153,6 +160,24 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         [skipID, allowSize, skipErase, skipVerify].forEach { $0.controlSize = .small; $0.font = .systemFont(ofSize: NSFont.smallSystemFontSize) }
         let optionsRow = row([memLabel, memoryPopup, skipID, allowSize, skipErase, skipVerify, spacer()])
 
+        ["ZIF socket", "ICSP – power from programmer", "ICSP – board has its own power"].forEach { connectionPopup.addItem(withTitle: $0) }
+        connectionPopup.controlSize = .small
+        connectionPopup.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        let connLabel = NSTextField(labelWithString: "Connection:")
+        connLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        pinCheckBox.controlSize = .small
+        pinCheckBox.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        pinCheckBox.target = self
+        pinCheckBox.action = #selector(pinCheckToggled(_:))
+        pinCheckBox.state = (UserDefaults.standard.object(forKey: "pinCheck") as? Bool ?? true) ? .on : .off
+        voltageLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        voltageLabel.textColor = .secondaryLabelColor
+        voltageLabel.lineBreakMode = .byTruncatingTail
+        let voltButton = button("Voltages…", #selector(editVoltages(_:)))
+        voltButton.controlSize = .small
+        voltButton.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        let connectionRow = row([connLabel, connectionPopup, pinCheckBox, spacer(), voltageLabel, voltButton])
+
         bufferLabel.lineBreakMode = .byTruncatingMiddle
         bufferLabel.isSelectable = true
         let fileRow = row([bufferLabel, spacer(),
@@ -173,7 +198,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         let logButton = button("Log", #selector(toggleLog(_:)))
         let statusRow = row([statusLabel, spacer(), progress, logButton])
 
-        let rows: [NSView] = [progRow, chipRow, chipInfoLabel, actionRow, optionsRow, fileRow, bufferView, statusRow]
+        let rows: [NSView] = [progRow, chipRow, chipInfoLabel, actionRow, optionsRow, connectionRow, fileRow, bufferView, statusRow]
         let stack = NSStackView(views: rows)
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -244,6 +269,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
 
     /// Shows the chip type, size and ID under the chip field, and adapts the controls to it.
     func updateChipInfo() {
+        if chip.uppercased() != voltagesChip {
+            // Voltage overrides never carry over to another chip.
+            if !voltages.isEmpty { log("Voltage overrides cleared because the chip changed.") }
+            voltages = VoltageOverrides()
+            voltagesChip = chip.uppercased()
+        }
+        defer { refreshCapabilities(); updateVoltageLabel() }
         guard ChipDatabase.shared.isLoaded else {
             chipInfoLabel.stringValue = "Loading chip database…"
             return
@@ -261,7 +293,173 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         case .mcu where info.dataSize > 0: s += " · pick the memory area under Memory"
         default: break
         }
+        if let c = currentCaps, c.icspSupported { s += " · ICSP capable" }
         chipInfoLabel.stringValue = s
+    }
+
+    // MARK: Chip capabilities, connection, pin check, voltages
+
+    private var capsKey: String { Minipro.shared.programmerType.uppercased() + ":" + chip.uppercased() }
+    private var currentCaps: ChipCapabilities? { caps[capsKey] }
+
+    /// Asks minipro (-d) once per chip whether it supports ICSP and which voltages it uses.
+    private func refreshCapabilities() {
+        let key = capsKey, name = chip, type = Minipro.shared.programmerType
+        guard !name.isEmpty, chipDetails != nil, caps[key] == nil, !capsPending.contains(key), !isBusy else { return }
+        capsPending.insert(key)
+        DispatchQueue.global(qos: .utility).async {
+            let r = Minipro.shared.runSync(["-q", type, "-d", name])
+            let c = ChipCapabilities.parse(r.output)
+            DispatchQueue.main.async {
+                self.capsPending.remove(key)
+                guard r.status == 0 else { return }
+                self.caps[key] = c
+                if key == self.capsKey { self.updateChipInfo() }
+            }
+        }
+    }
+
+    private func updateVoltageLabel() {
+        if !voltages.isEmpty {
+            voltageLabel.stringValue = "Voltages: \(voltages.summary)"
+            voltageLabel.textColor = .systemOrange
+            return
+        }
+        voltageLabel.textColor = .secondaryLabelColor
+        guard let c = currentCaps else { voltageLabel.stringValue = "Voltages: chip defaults"; return }
+        guard c.hasVoltageOptions else { voltageLabel.stringValue = "Voltages: fixed for this chip"; return }
+        let parts = [c.vpp.map { "VPP \($0)" }, c.vdd.map { "VDD \($0)" }, c.vcc.map { "VCC \($0)" }, c.pulse.map { "pulse \($0)" }].compactMap { $0 }
+        voltageLabel.stringValue = "Voltages: defaults (\(parts.joined(separator: ", ")))"
+    }
+
+    @objc private func pinCheckToggled(_ sender: Any?) {
+        UserDefaults.standard.set(pinCheckBox.state == .on, forKey: "pinCheck")
+    }
+
+    private var usingICSP: Bool { connectionPopup.indexOfSelectedItem > 0 }
+
+    /// -i: ICSP with the programmer powering the target; -I: ICSP, target powered on its own.
+    private var connectionArgs: [String] {
+        switch connectionPopup.indexOfSelectedItem {
+        case 1: return ["-i"]
+        case 2: return ["-I"]
+        default: return []
+        }
+    }
+
+    private func connectionAllowed() -> Bool {
+        if usingICSP, let c = currentCaps, !c.icspSupported {
+            showError("\(chip) can't be programmed over ICSP.", "Set Connection to ZIF socket, or choose a chip that supports in-circuit programming.")
+            return false
+        }
+        return true
+    }
+
+    /// Runs minipro's pin contact check (-z) before a socket job, unless it's off, ICSP is used,
+    /// or this programmer has already shown it doesn't support the check.
+    private func afterPinCheck(_ go: @escaping () -> Void) {
+        let type = Minipro.shared.programmerType
+        let unsupportedKey = "pinCheckUnsupported.\(type.uppercased())"
+        guard pinCheckBox.state == .on, !usingICSP, !UserDefaults.standard.bool(forKey: unsupportedKey) else { go(); return }
+        let name = chip
+        isBusy = true
+        setStatus("Checking pin contact…")
+        DispatchQueue.global(qos: .userInitiated).async {
+            let r = Minipro.shared.runSync(["-p", name, "-z"])
+            DispatchQueue.main.async {
+                self.isBusy = false
+                let text = r.output.components(separatedBy: .newlines)
+                    .filter { !$0.contains("overridden database") && !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+                    .joined(separator: "\n")
+                if !text.isEmpty { self.log("Pin check:\n" + text) }
+                let lower = text.lowercased()
+                if lower.contains("not supported") || lower.contains("unsupported") || lower.contains("not implemented") {
+                    UserDefaults.standard.set(true, forKey: unsupportedKey)
+                    self.log("The \(type) doesn't support the pin contact check – it will be skipped from now on.")
+                    go()
+                } else if r.status == 0 {
+                    self.setStatus("Pin contact OK")
+                    go()
+                } else {
+                    self.setStatus("Pin contact check failed – see Log")
+                    NSSound.beep()
+                    let tail = text.components(separatedBy: "\n").suffix(8).joined(separator: "\n")
+                    self.showError("Bad pin contact",
+                                   "Reseat the chip (lever up, press it down, lever down) and try again.\n\n\(tail)\n\nIf the check itself is wrong, untick “Check pin contact first”.")
+                }
+            }
+        }
+    }
+
+    @objc func editVoltages(_ sender: Any?) {
+        guard requireChip(), let w = window else { return }
+        guard let c = currentCaps else {
+            refreshCapabilities()
+            showError("Still reading the chip's settings.", "Try again in a moment.")
+            return
+        }
+        guard c.hasVoltageOptions else {
+            showError("\(chip) has no adjustable voltages.", "Custom voltages are available for UV EPROMs, GALs and similar chips.")
+            return
+        }
+        let type = Minipro.shared.programmerType
+        func popup(_ title: String, _ def: String?, _ choices: [String], _ current: String?) -> (NSStackView, NSPopUpButton) {
+            let p = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 170, height: 26), pullsDown: false)
+            p.addItem(withTitle: "Default" + (def.map { " (\($0))" } ?? ""))
+            choices.forEach { p.addItem(withTitle: "\($0) V") }
+            if let cur = current, let i = choices.firstIndex(of: cur) { p.selectItem(at: i + 1) }
+            p.isEnabled = def != nil
+            let l = NSTextField(labelWithString: title)
+            l.widthAnchor.constraint(equalToConstant: 150).isActive = true
+            return (row([l, p]), p)
+        }
+        let (vppRow, vppPop) = popup("VPP programming", c.vpp, VoltageOverrides.vppChoices(for: type), voltages.vpp)
+        let (vddRow, vddPop) = popup("VDD while writing", c.vdd, VoltageOverrides.supplyChoices, voltages.vdd)
+        let (vccRow, vccPop) = popup("VCC while verifying", c.vcc, VoltageOverrides.supplyChoices, voltages.vcc)
+        let pulseField = NSTextField(string: voltages.pulse ?? "")
+        pulseField.placeholderString = "default" + (c.pulse.map { " (\($0))" } ?? "")
+        pulseField.widthAnchor.constraint(equalToConstant: 170).isActive = true
+        pulseField.isEnabled = c.pulse != nil
+        let pulseLabel = NSTextField(labelWithString: "Pulse (µs, 0–65535)")
+        pulseLabel.widthAnchor.constraint(equalToConstant: 150).isActive = true
+        let stack = NSStackView(views: [vppRow, vddRow, vccRow, row([pulseLabel, pulseField])])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 8
+        stack.frame = NSRect(x: 0, y: 0, width: 340, height: 140)
+
+        let a = NSAlert()
+        a.messageText = "Programming voltages for \(chip)"
+        a.informativeText = "These apply only when programming. Wrong values can destroy a chip – take them from the chip's datasheet. They are cleared when you pick another chip."
+        a.accessoryView = stack
+        a.addButton(withTitle: "Set")
+        a.addButton(withTitle: "Cancel")
+        a.addButton(withTitle: "Reset to Defaults")
+        a.beginSheetModal(for: w) { [weak self] resp in
+            guard let self = self else { return }
+            if resp == .alertThirdButtonReturn {
+                self.voltages = VoltageOverrides()
+            } else if resp == .alertFirstButtonReturn {
+                func pick(_ p: NSPopUpButton, _ choices: [String]) -> String? {
+                    p.indexOfSelectedItem > 0 ? choices[p.indexOfSelectedItem - 1] : nil
+                }
+                var v = VoltageOverrides()
+                v.vpp = pick(vppPop, VoltageOverrides.vppChoices(for: type))
+                v.vdd = pick(vddPop, VoltageOverrides.supplyChoices)
+                v.vcc = pick(vccPop, VoltageOverrides.supplyChoices)
+                let pulse = pulseField.stringValue.trimmingCharacters(in: .whitespaces)
+                if !pulse.isEmpty {
+                    guard let n = Int(pulse), (0...65535).contains(n) else {
+                        DispatchQueue.main.async { self.showError("Pulse must be a whole number from 0 to 65535 µs.", "") }
+                        return
+                    }
+                    v.pulse = String(n)
+                }
+                self.voltages = v
+            } else { return }
+            self.log("Programming voltages: \(self.voltages.summary)")
+            self.updateVoltageLabel()
+        }
     }
 
     private func log(_ s: String) {
@@ -489,49 +687,63 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     }
 
     @objc func readChip(_ sender: Any?) {
-        guard requireChip() else { return }
+        guard requireChip(), connectionAllowed() else { return }
         let m = mode
         let out = tempURL("read.\(m.ext)")
         try? FileManager.default.removeItem(at: out)
-        runJob("Read \(chip) (\(m.label))", ["-p", chip] + m.memArgs + ["-r", out.path] + optionArgs(.read)) { [weak self] ok, _ in
-            guard let self = self, ok, let data = try? Data(contentsOf: out) else { return }
-            self.buffer = data
-            self.bufferIsText = m.text
-            self.bufferExt = m.ext
-            self.bufferName = "read from \(self.chip)"
-            self.updateBufferViews()
+        afterPinCheck { [weak self] in
+            guard let self = self else { return }
+            self.runJob("Read \(self.chip) (\(m.label))", ["-p", self.chip] + self.connectionArgs + m.memArgs + ["-r", out.path] + self.optionArgs(.read)) { [weak self] ok, _ in
+                guard let self = self, ok, let data = try? Data(contentsOf: out) else { return }
+                self.buffer = data
+                self.bufferIsText = m.text
+                self.bufferExt = m.ext
+                self.bufferName = "read from \(self.chip)"
+                self.updateBufferViews()
+            }
         }
     }
 
     @objc func blankCheck(_ sender: Any?) {
-        guard requireChip() else { return }
+        guard requireChip(), connectionAllowed() else { return }
         let m = mode
-        runJob("Blank check \(chip)", ["-p", chip] + m.memArgs + ["-b"] + optionArgs(.check))
+        afterPinCheck { [weak self] in
+            guard let self = self else { return }
+            self.runJob("Blank check \(self.chip)", ["-p", self.chip] + self.connectionArgs + m.memArgs + ["-b"] + self.optionArgs(.check))
+        }
     }
 
     @objc func verifyChip(_ sender: Any?) {
-        guard requireChip(), let file = writeBufferToTemp(for: mode) else { return }
+        guard requireChip(), connectionAllowed(), let file = writeBufferToTemp(for: mode) else { return }
         let m = mode
-        runJob("Verify \(chip)", ["-p", chip] + m.memArgs + ["-m", file.path] + optionArgs(.verify))
+        afterPinCheck { [weak self] in
+            guard let self = self else { return }
+            self.runJob("Verify \(self.chip)", ["-p", self.chip] + self.connectionArgs + m.memArgs + ["-m", file.path] + self.optionArgs(.verify))
+        }
     }
 
     @objc func programChip(_ sender: Any?) {
-        guard requireChip(), let w = window else { return }
+        guard requireChip(), connectionAllowed(), let w = window else { return }
         let m = mode
         guard let file = writeBufferToTemp(for: m) else { return }
+        let volts = voltages
+        let where_ = usingICSP ? "over ICSP (\(connectionPopup.titleOfSelectedItem ?? "ICSP"))" : "in the ZIF socket (lever down, pin 1 at the lever end, bottom-aligned)"
         let a = NSAlert()
         a.messageText = "Program \(chip)?"
-        a.informativeText = "\(buffer.count) bytes from “\(bufferName)” will be written to the \(m.label). Check the chip type and that it sits correctly in the socket (lever down, pin 1 at the lever end, bottom-aligned)."
+        a.informativeText = "\(buffer.count) bytes from “\(bufferName)” will be written to the \(m.label) \(where_).\n\nVoltages: \(volts.summary)."
         a.addButton(withTitle: "Program")
         a.addButton(withTitle: "Cancel")
         a.beginSheetModal(for: w) { [weak self] resp in
             guard let self = self, resp == .alertFirstButtonReturn else { return }
-            self.runJob("Program \(self.chip)", ["-p", self.chip] + m.memArgs + ["-w", file.path] + self.optionArgs(.write))
+            self.afterPinCheck { [weak self] in
+                guard let self = self else { return }
+                self.runJob("Program \(self.chip)", ["-p", self.chip] + self.connectionArgs + m.memArgs + ["-w", file.path] + volts.args + self.optionArgs(.write))
+            }
         }
     }
 
     @objc func eraseChip(_ sender: Any?) {
-        guard requireChip(), let w = window else { return }
+        guard requireChip(), connectionAllowed(), let w = window else { return }
         let a = NSAlert()
         a.messageText = "Erase \(chip)?"
         a.informativeText = "This works for flash, EEPROM, GAL and microcontroller chips. UV EPROMs (27Cxxx) can only be erased with UV light."
@@ -539,7 +751,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         a.addButton(withTitle: "Cancel")
         a.beginSheetModal(for: w) { [weak self] resp in
             guard let self = self, resp == .alertFirstButtonReturn else { return }
-            self.runJob("Erase \(self.chip)", ["-p", self.chip, "-E"])
+            self.runJob("Erase \(self.chip)", ["-p", self.chip] + self.connectionArgs + ["-E"])
         }
     }
 

@@ -153,13 +153,16 @@ MANFILE="$(find "$WORK/src/minipro-git" -name 'minipro.1' -print -quit)"
 MANTXT="$( (mandoc -T ascii "$MANFILE" 2>/dev/null || groff -man -Tascii "$MANFILE" 2>/dev/null || cat "$MANFILE") | col -b | sed 's/\\-/-/g')"
 missing=0
 OPTDOC=""
-for opt in -q -k -L -d -p -r -w -m -b -E -x -y -s -e -v -c -D -T --infoic --logicic; do
+for opt in -q -k -L -d -p -r -w -m -b -E -x -y -s -e -v -c -D -T -i -I -z --infoic --logicic; do
   lines="$(grep -E -A2 "^[[:space:]]*(-[A-Za-z], )?$opt([,[:space:]]|$)" <<<"$MANTXT" | head -3 | tr -s ' ' || true)"
   if [ -z "$lines" ]; then echo "MISSING OPTION: $opt"; missing=1; else OPTDOC+="$lines"$'\n'; fi
 done
 echo "$OPTDOC"
 NOTE="${OPTDOC//'%'/'%25'}"; NOTE="${NOTE//$'\n'/'%0A'}"
 echo "::notice title=minipro options used by ChipBurner::$NOTE"
+for o in 'vpp=<value>' 'vdd=<value>' 'vcc=<value>' 'pulse=<value>'; do
+  grep -q -F -- "-o $o" <<<"$MANTXT" || { echo "MISSING OPTION: -o $o"; missing=1; }
+done
 [ "$missing" = 0 ] || { echo "ERROR: minipro's options differ from what ChipBurner expects"; false; }
 
 PROGDOC="$(grep -E -i -B1 -A3 'programmer|tl866a' <<<"$MANTXT" | head -40 | tr -s ' ')"
@@ -169,16 +172,9 @@ echo "::notice title=minipro programmer selection::$NOTE"
 note() { local t="$1" b="$2"; b="${b//'%'/'%25'}"; b="${b//$'\n'/'%0A'}"; echo "::notice title=$t::$b"; }
 note "minipro: all options" "$(grep -E '^[[:space:]]*(-[A-Za-z][, ]|--[a-z])' <<<"$MANTXT" | sed -E 's/^[[:space:]]+//' | tr -s ' ' | head -80)"
 
-note "minipro: pin check" "$(grep -E -i -B1 -A8 '(-z, --pin_check|pin.?check|pin.?detect|bad contact)' <<<"$MANTXT" | head -50 | tr -s ' ')"
-
 log "Smoke test: chip database search for 27C256"
 DBARGS=(--infoic "$APP/Contents/Resources/minipro/infoic.xml")
 [ -f "$APP/Contents/Resources/minipro/logicic.xml" ] && DBARGS+=(--logicic "$APP/Contents/Resources/minipro/logicic.xml")
-note "minipro: voltage options" "$(grep -E -A45 '^[[:space:]]*-o vpp=' <<<"$MANTXT" | head -45 | tr -s ' ')"
-for c in 'ATMEGA328P@DIP28' 'AM27C256@DIP28' 'GAL16V8' 'PIC16F84A' 'W27C512@DIP28'; do
-  note "minipro -d $c" "$("$APP/Contents/MacOS/minipro" "${DBARGS[@]}" -q TL866A -d "$c" 2>&1 | grep -v 'overridden database' | head -30)"
-done
-
 SEARCH="$("$APP/Contents/MacOS/minipro" "${DBARGS[@]}" -q TL866A -L 27C256 2>&1 || true)"
 echo "$SEARCH" | head -20
 NOTE="$(head -15 <<<"$SEARCH")"; NOTE="${NOTE//'%'/'%25'}"; NOTE="${NOTE//$'\n'/'%0A'}"
@@ -186,7 +182,7 @@ echo "::notice title=Chip search for 27C256::$NOTE"
 grep -q -i '27C256' <<<"$SEARCH" || { echo "ERROR: chip search returned nothing"; false; }
 
 log "Test: ChipBurner's database reader against the bundled database"
-xcrun swiftc -O -sdk "$SDK" "$ROOT/Sources/ChipDatabase.swift" "$ROOT/tests/dbtest/main.swift" -o "$WORK/dbtest"
+xcrun swiftc -O -sdk "$SDK" "$ROOT/Sources/ChipDatabase.swift" "$ROOT/Sources/ChipCapabilities.swift" "$ROOT/tests/dbtest/main.swift" -o "$WORK/dbtest"
 DBT="$("$WORK/dbtest" "$APP/Contents/Resources/minipro/infoic.xml" "$APP/Contents/Resources/minipro/logicic.xml" 2>&1)" || { echo "$DBT"; false; }
 echo "$DBT"
 NOTE="${DBT//'%'/'%25'}"; NOTE="${NOTE//$'\n'/'%0A'}"
