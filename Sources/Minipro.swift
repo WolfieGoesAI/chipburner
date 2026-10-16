@@ -13,13 +13,20 @@ final class Minipro {
         didSet { UserDefaults.standard.set(programmerType, forKey: "programmerType") }
     }
 
-    /// Picks the programmer type out of `minipro -k` output, e.g. "Found TL866A 03.2.86".
-    func updateProgrammerType(from output: String) {
+    /// Picks the programmer type out of `minipro -k` output (e.g. "tl866a: TL866A")
+    /// and returns the model name to show, or nil if none is recognised.
+    @discardableResult
+    func updateProgrammerType(from output: String) -> String? {
         let up = output.uppercased()
-        for t in ["TL866II", "TL866A", "TL866CS", "T48", "T56"] where up.contains(t) {
-            programmerType = (t == "TL866CS") ? "TL866A" : t
-            return
+        let models: [(key: String, type: String, display: String)] = [
+            ("TL866II", "TL866II", "TL866II+"), ("T48", "T48", "T48"), ("T56", "T56", "T56"),
+            ("TL866CS", "TL866A", "TL866CS"), ("TL866A", "TL866A", "TL866A"),
+        ]
+        for m in models where up.contains(m.key) {
+            programmerType = m.type
+            return m.display
         }
+        return nil
     }
     let infoic: URL?
     let logicic: URL?

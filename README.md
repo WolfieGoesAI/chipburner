@@ -5,13 +5,13 @@ A native Mac app for TL866-series chip programmers (TL866A/CS, TL866II+, T48), b
 no drivers, nothing else to install.
 
 - Runs on macOS 10.14.4 (Mojave) or newer, Intel and Apple silicon
-- Check programmer, search chips, chip info (type, size, ID shown under the chip name)
+- Check programmer, search chips; type, size and ID shown under the chip name
+- **Chip Info**: minipro's details for the chip – memory size, package, ICSP support, default programming voltages
 - **Identify**: reads a chip's electronic ID and lists every matching chip in the database
 - Read, blank check, program, verify, erase
 - **Logic Test** for 74xx/40xx logic ICs, with pass/fail and the failing vectors in the log
 - **Identify Logic…**: pick the pin count and ChipBurner tries every matching 5 V logic chip type, then lists the ones the chip passes
 - **Connection**: ZIF socket, or ICSP with the programmer powering the board (`-i`) or the board powering itself (`-I`); chip info says whether a chip is ICSP capable
-- **Check pin contact first** (on by default): runs minipro's pin contact check before read, blank check, verify and program; skipped automatically if the programmer doesn't support it
 - **Voltages…**: override VPP, write VDD, verify VCC and pulse width when programming EPROMs, GALs and similar chips; the chip's defaults are shown, and overrides are cleared when the chip changes
 - Log in its own window, shown with the **Log** button (or Window ▸ Log, ⌘L)
 - **Memory** selector for microcontrollers: code, data EEPROM, config/fuses, user row, calibration
