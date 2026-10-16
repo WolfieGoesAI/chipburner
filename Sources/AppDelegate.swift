@@ -59,6 +59,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let editItem = NSMenuItem(); main.addItem(editItem)
         let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        let redo = editMenu.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "z")
+        redo.keyEquivalentModifierMask = [.command, .shift]
+        editMenu.addItem(.separator())
         editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
         editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
         editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
@@ -81,6 +85,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         chipMenu.addItem(.separator())
         chipMenu.addItem(withTitle: "Stop", action: #selector(MainWindowController.stop(_:)), keyEquivalent: ".")
         chipItem.submenu = chipMenu
+
+        let bufItem = NSMenuItem(); main.addItem(bufItem)
+        let bufMenu = NSMenu(title: "Buffer")
+        bufMenu.addItem(withTitle: "New Buffer…", action: #selector(MainWindowController.newBuffer(_:)), keyEquivalent: "n")
+        bufMenu.addItem(.separator())
+        bufMenu.addItem(withTitle: "Go to Address…", action: #selector(MainWindowController.goToAddress(_:)), keyEquivalent: "j")
+        let find = bufMenu.addItem(withTitle: "Find in Buffer…", action: #selector(MainWindowController.findInBuffer(_:)), keyEquivalent: "f")
+        find.keyEquivalentModifierMask = [.command, .option]
+        bufMenu.addItem(withTitle: "Find Next", action: #selector(MainWindowController.findNextInBuffer(_:)), keyEquivalent: "g")
+        bufMenu.addItem(.separator())
+        bufMenu.addItem(withTitle: "Fill Range…", action: #selector(MainWindowController.fillBufferRange(_:)), keyEquivalent: "")
+        bufMenu.addItem(withTitle: "Checksum of Range…", action: #selector(MainWindowController.checksumBufferRange(_:)), keyEquivalent: "")
+        bufMenu.addItem(withTitle: "Resize Buffer…", action: #selector(MainWindowController.resizeBuffer(_:)), keyEquivalent: "")
+        bufItem.submenu = bufMenu
 
         let winItem = NSMenuItem(); main.addItem(winItem)
         let winMenu = NSMenu(title: "Window")

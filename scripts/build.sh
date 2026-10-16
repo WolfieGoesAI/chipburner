@@ -182,7 +182,7 @@ echo "::notice title=Chip search for 27C256::$NOTE"
 grep -q -i '27C256' <<<"$SEARCH" || { echo "ERROR: chip search returned nothing"; false; }
 
 log "Test: ChipBurner's database reader against the bundled database"
-xcrun swiftc -O -sdk "$SDK" "$ROOT/Sources/ChipDatabase.swift" "$ROOT/Sources/ChipCapabilities.swift" "$ROOT/tests/dbtest/main.swift" -o "$WORK/dbtest"
+xcrun swiftc -O -sdk "$SDK" "$ROOT/Sources/ChipDatabase.swift" "$ROOT/Sources/ChipCapabilities.swift" "$ROOT/Sources/DataFormats.swift" "$ROOT/Sources/BufferOps.swift" "$ROOT/tests/dbtest/main.swift" -o "$WORK/dbtest"
 DBT="$("$WORK/dbtest" "$APP/Contents/Resources/minipro/infoic.xml" "$APP/Contents/Resources/minipro/logicic.xml" 2>&1)" || { echo "$DBT"; false; }
 echo "$DBT"
 NOTE="${DBT//'%'/'%25'}"; NOTE="${NOTE//$'\n'/'%0A'}"

@@ -1,6 +1,6 @@
 import Cocoa
 
-final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFieldDelegate {
+final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFieldDelegate, NSTextViewDelegate {
 
     // MARK: State
     private var buffer = Data()
@@ -26,7 +26,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     private let bufferLabel = NSTextField(labelWithString: "Buffer: empty")
     private let statusLabel = NSTextField(labelWithString: "Ready")
     private let progress = NSProgressIndicator()
-    private let hexView = MainWindowController.makeTextView()
+    private let hexEditor = HexEditorView()
+    private let textEditor = MainWindowController.makeTextView()
+    private var textScroll: NSScrollView!
+    private var bufferEdited = false
+    private var lastFindPattern = ""
+    private var labelUpdatePending = false
     private let logView = MainWindowController.makeTextView()
     private let memoryPopup = NSPopUpButton(frame: .zero, pullsDown: false)
 
@@ -190,17 +195,24 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             return l
         }
         let empty = { () -> NSView in NSView() }
+        // Connection and Memory share the first row; Voltages and Options line up under Connection.
         let grid = NSGridView(views: [
-            [label("Memory:"), memoryPopup, empty()],
-            [label("Connection:"), connectionPopup, empty()],
-            [label("Voltages:"), voltButton, voltageLabel],
-            [label("Options:"), settingsButton, settingsLabel],
+            [label("Connection:"), connectionPopup, label("Memory:"), memoryPopup, empty()],
+            [label("Voltages:"), voltButton, voltageLabel, empty(), empty()],
+            [label("Options:"), settingsButton, settingsLabel, empty(), empty()],
         ])
         grid.rowSpacing = 6
         grid.columnSpacing = 8
         grid.rowAlignment = .firstBaseline
         grid.column(at: 0).xPlacement = .trailing
         grid.column(at: 1).xPlacement = .leading
+        grid.column(at: 2).xPlacement = .trailing
+        grid.column(at: 3).xPlacement = .leading
+        grid.column(at: 2).leadingPadding = 12
+        for r in 1...2 {
+            grid.row(at: r).mergeCells(in: NSRange(location: 2, length: 3))
+            grid.cell(atColumnIndex: 2, rowIndex: r).xPlacement = .leading
+        }
         updateSettingsLabel()
 
         bufferLabel.lineBreakMode = .byTruncatingMiddle
@@ -211,7 +223,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
                            button("Save .bin…", #selector(saveBinary(_:))),
                            button("Save .hex…", #selector(saveIntelHex(_:)))])
 
-        let bufferView = scroll(hexView)
+        let editRow = buildEditRow()
+        let bufferView = buildBufferEditor()
         bufferView.heightAnchor.constraint(greaterThanOrEqualToConstant: 300).isActive = true
         buildLogWindow()
 
@@ -224,12 +237,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         let logButton = button("Log", #selector(toggleLog(_:)))
         let statusRow = row([statusLabel, spacer(), progress, logButton])
 
-        let rows: [NSView] = [progRow, chipRow, chipInfoLabel, actionRow, grid, fileRow, bufferView, statusRow]
+        let rows: [NSView] = [progRow, chipRow, chipInfoLabel, actionRow, grid, fileRow, editRow, bufferView, statusRow]
         let stack = NSStackView(views: rows)
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
         stack.setCustomSpacing(4, after: chipRow)
+        stack.setCustomSpacing(6, after: fileRow)
+        stack.setCustomSpacing(6, after: editRow)
         stack.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 12, right: 16)
         stack.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(stack)
@@ -475,21 +490,34 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         memoryPopup.isEnabled = !isBusy
     }
 
+    /// Shows a newly loaded or read buffer in the editor (and starts a fresh undo history).
     private func updateBufferViews() {
-        if buffer.isEmpty {
-            bufferLabel.stringValue = "Buffer: empty"
-            hexView.string = ""
-            return
-        }
+        bufferEdited = false
         if bufferIsText {
-            bufferLabel.stringValue = "Buffer: \(bufferName) — .\(bufferExt) text, \(buffer.count) bytes"
-            hexView.string = String(decoding: buffer, as: UTF8.self)
+            textEditor.string = String(decoding: buffer, as: UTF8.self)
+            textEditor.undoManager?.removeAllActions()
+            textScroll.isHidden = false
+            hexEditor.isHidden = true
+            hexEditor.setData(Data())
         } else {
-            bufferLabel.stringValue = String(format: "Buffer: %@ — %d bytes — sum 0x%04X — CRC32 0x%08X",
-                                             bufferName, buffer.count, Checksums.sum16(buffer), Checksums.crc32(buffer))
-            hexView.string = HexDump.render(buffer)
+            hexEditor.setData(buffer)
+            textEditor.string = ""
+            textScroll.isHidden = true
+            hexEditor.isHidden = false
         }
-        hexView.scrollToBeginningOfDocument(nil)
+        updateBufferLabel()
+    }
+
+    private func updateBufferLabel() {
+        let edited = bufferEdited ? " (edited)" : ""
+        if buffer.isEmpty && !bufferIsText {
+            bufferLabel.stringValue = "Buffer: empty – open a file, read a chip or use New Buffer…"
+        } else if bufferIsText {
+            bufferLabel.stringValue = "Buffer: \(bufferName)\(edited) — .\(bufferExt) text, \(buffer.count) bytes"
+        } else {
+            bufferLabel.stringValue = String(format: "Buffer: %@%@ — %d (0x%X) bytes — sum 0x%04X — CRC32 0x%08X",
+                                             bufferName, edited, buffer.count, buffer.count, Checksums.sum16(buffer), Checksums.crc32(buffer))
+        }
     }
 
     private func requireChip() -> Bool {
@@ -1225,6 +1253,260 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
                 self.showError("Could not save.", error.localizedDescription)
             }
         }
+    }
+
+    // MARK: Buffer editing
+
+    private func buildBufferEditor() -> NSView {
+        let container = NSView()
+        textEditor.isEditable = true
+        textEditor.allowsUndo = true
+        textEditor.delegate = self
+        textScroll = scroll(textEditor)
+        for v in [hexEditor, textScroll!] as [NSView] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(v)
+            NSLayoutConstraint.activate([
+                v.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                v.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+                v.topAnchor.constraint(equalTo: container.topAnchor),
+                v.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            ])
+        }
+        textScroll.isHidden = true
+        hexEditor.onChange = { [weak self] in
+            guard let self = self else { return }
+            self.buffer = self.hexEditor.data
+            self.bufferChanged()
+        }
+        return container
+    }
+
+    private func buildEditRow() -> NSView {
+        let items: [(String, Selector)] = [
+            ("New…", #selector(newBuffer(_:))), ("Go To…", #selector(goToAddress(_:))),
+            ("Find…", #selector(findInBuffer(_:))), ("Find Next", #selector(findNextInBuffer(_:))),
+            ("Fill…", #selector(fillBufferRange(_:))), ("Checksum…", #selector(checksumBufferRange(_:))),
+            ("Resize…", #selector(resizeBuffer(_:))), ("Undo", #selector(undoBufferEdit(_:))), ("Redo", #selector(redoBufferEdit(_:))),
+        ]
+        let buttons = items.map { item -> NSButton in
+            let b = button(item.0, item.1)
+            b.controlSize = .small
+            b.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+            return b
+        }
+        let hint = NSTextField(labelWithString: "Double-click a byte to edit it")
+        hint.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        hint.textColor = .secondaryLabelColor
+        return row(buttons + [spacer(), hint])
+    }
+
+    /// Called after every edit: marks the buffer edited and refreshes the label (checksums are
+    /// recomputed at most a few times a second).
+    private func bufferChanged() {
+        bufferEdited = true
+        guard !labelUpdatePending else { return }
+        labelUpdatePending = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            self?.labelUpdatePending = false
+            self?.updateBufferLabel()
+        }
+    }
+
+    func textDidChange(_ notification: Notification) {
+        guard (notification.object as? NSTextView) === textEditor else { return }
+        buffer = Data(textEditor.string.utf8)
+        bufferChanged()
+    }
+
+    private func requireBinaryBuffer(allowEmpty: Bool = false) -> Bool {
+        if bufferIsText {
+            showError("The buffer holds a .\(bufferExt) text file.", "Edit it directly in the text view. Fill, Find and the other byte tools work on binary data.")
+            return false
+        }
+        if !allowEmpty && buffer.isEmpty {
+            showError("The buffer is empty.", "Open a file, read a chip or use New… first.")
+            return false
+        }
+        return true
+    }
+
+    /// A sheet with labelled text fields; `done` gets the values, or isn't called on Cancel.
+    private func askFields(_ title: String, _ info: String, _ fields: [(label: String, value: String)],
+                           ok: String = "OK", done: @escaping ([String]) -> Void) {
+        guard let w = window else { return }
+        var inputs: [NSTextField] = []
+        var rows: [[NSView]] = []
+        for f in fields {
+            let l = NSTextField(labelWithString: f.label)
+            l.alignment = .right
+            let t = NSTextField(string: f.value)
+            t.font = NSFont.userFixedPitchFont(ofSize: 12)
+            t.widthAnchor.constraint(equalToConstant: 220).isActive = true
+            inputs.append(t)
+            rows.append([l, t])
+        }
+        let grid = NSGridView(views: rows)
+        grid.rowSpacing = 8
+        grid.column(at: 0).xPlacement = .trailing
+        grid.frame.size = grid.fittingSize
+        let a = NSAlert()
+        a.messageText = title
+        a.informativeText = info
+        a.accessoryView = grid
+        a.addButton(withTitle: ok)
+        a.addButton(withTitle: "Cancel")
+        a.window.initialFirstResponder = inputs.first
+        a.beginSheetModal(for: w) { resp in
+            guard resp == .alertFirstButtonReturn else { return }
+            done(inputs.map { $0.stringValue })
+        }
+    }
+
+    private func hexAddr(_ v: Int) -> String {
+        String(format: "%0\(BufferOps.addressDigits(for: buffer.count))X", v)
+    }
+
+    private let numberHelp = "Numbers are hexadecimal (1F00, 0x1F00, $1F00). Use #8192 for decimal or 32K / 1M for sizes."
+
+    @objc func newBuffer(_ sender: Any?) {
+        guard !isBusy else { return }
+        let size = chipDetails.map { $0.codeSize } ?? 0
+        askFields("New buffer", "Creates an empty buffer filled with one value. \(numberHelp)",
+                  [("Size:", size > 0 ? String(format: "%X", size) : "8000"), ("Fill with:", "FF")], ok: "Create") { [weak self] v in
+            guard let self = self else { return }
+            guard let n = BufferOps.parseNumber(v[0]), n > 0, n <= 256 << 20 else { self.showError("Invalid size.", self.numberHelp); return }
+            guard let p = BufferOps.parsePattern(v[1]), !p.contains(where: { $0 == nil }) else { self.showError("Invalid fill value.", "Use hex bytes such as FF or 00, or a pattern such as 55 AA."); return }
+            self.buffer = BufferOps.fill(count: n, pattern: p.compactMap { $0 })
+            self.bufferIsText = false
+            self.bufferExt = "bin"
+            self.bufferName = "new"
+            self.updateBufferViews()
+            self.log("New buffer: \(n) bytes of \(v[1]).")
+        }
+    }
+
+    @objc func goToAddress(_ sender: Any?) {
+        guard requireBinaryBuffer() else { return }
+        askFields("Go to address", numberHelp, [("Address:", hexAddr(hexEditor.selectedAddress))], ok: "Go") { [weak self] v in
+            guard let self = self else { return }
+            guard let a = BufferOps.parseNumber(v[0]), a >= 0, a < self.buffer.count else {
+                self.showError("Address out of range.", "The buffer ends at \(self.hexAddr(max(0, self.buffer.count - 1))).")
+                return
+            }
+            self.hexEditor.show(a..<(a + 1))
+            self.hexEditor.cursor = a
+        }
+    }
+
+    @objc func findInBuffer(_ sender: Any?) {
+        guard requireBinaryBuffer() else { return }
+        askFields("Find in buffer", "Hex bytes such as 55 AA or C3 ?? ?? (?? matches any byte), or text in quotes such as \"COPYRIGHT\". The search continues from the last hit and wraps around.",
+                  [("Find:", lastFindPattern)], ok: "Find") { [weak self] v in
+            guard let self = self else { return }
+            self.lastFindPattern = v[0]
+            self.runFind(from: self.hexEditor.cursor)
+        }
+    }
+
+    @objc func findNextInBuffer(_ sender: Any?) {
+        guard requireBinaryBuffer() else { return }
+        if lastFindPattern.isEmpty { findInBuffer(sender); return }
+        runFind(from: hexEditor.cursor)
+    }
+
+    private func runFind(from start: Int) {
+        guard let p = BufferOps.parsePattern(lastFindPattern) else {
+            showError("Can't read the search pattern.", "Use hex bytes (55 AA, ?? for any byte) or text in quotes.")
+            return
+        }
+        guard let hit = BufferOps.find(p, in: buffer, from: start) else {
+            setStatus("Not found: \(lastFindPattern)")
+            NSSound.beep()
+            return
+        }
+        hexEditor.show(hit..<(hit + p.count))
+        hexEditor.cursor = hit + 1
+        setStatus("Found \(lastFindPattern) at \(hexAddr(hit))" + (hit < start ? " (wrapped around)" : ""))
+    }
+
+    private func parseRange(_ startText: String, _ endText: String) -> Range<Int>? {
+        guard let a = BufferOps.parseNumber(startText), let b = BufferOps.parseNumber(endText),
+              a >= 0, b >= a, b < buffer.count else {
+            showError("Invalid range.", "Start and end must lie inside the buffer (0 to \(hexAddr(max(0, buffer.count - 1)))), with end ≥ start. \(numberHelp)")
+            return nil
+        }
+        return a..<(b + 1)
+    }
+
+    @objc func fillBufferRange(_ sender: Any?) {
+        guard requireBinaryBuffer() else { return }
+        askFields("Fill range", "Fills from start to end (both included) with a byte or a repeating pattern. \(numberHelp)",
+                  [("Start:", hexAddr(hexEditor.selectedAddress)), ("End:", hexAddr(buffer.count - 1)), ("Fill with:", "FF")], ok: "Fill") { [weak self] v in
+            guard let self = self, let r = self.parseRange(v[0], v[1]) else { return }
+            guard let p = BufferOps.parsePattern(v[2]), !p.contains(where: { $0 == nil }) else {
+                self.showError("Invalid fill value.", "Use hex bytes such as FF, or a pattern such as 55 AA, or text in quotes.")
+                return
+            }
+            let bytes = BufferOps.fill(count: r.count, pattern: p.compactMap { $0 })
+            self.hexEditor.edit { $0.replace(r, with: bytes) }
+            self.log("Filled \(self.hexAddr(r.lowerBound))–\(self.hexAddr(r.upperBound - 1)) with \(v[2]).")
+        }
+    }
+
+    @objc func checksumBufferRange(_ sender: Any?) {
+        guard requireBinaryBuffer() else { return }
+        askFields("Checksum of range", "Start and end are both included. \(numberHelp)",
+                  [("Start:", hexAddr(0)), ("End:", hexAddr(buffer.count - 1))], ok: "Calculate") { [weak self] v in
+            guard let self = self, let r = self.parseRange(v[0], v[1]) else { return }
+            let c = BufferOps.checksums(self.buffer.subdata(in: r))
+            let text = String(format: """
+                Range %@–%@ (%d bytes)
+
+                Sum, 8-bit:    0x%02X   (two's complement 0x%02X)
+                Sum, 16-bit:   0x%04X
+                Sum, 32-bit:   0x%08X
+                XOR, 8-bit:    0x%02X
+                CRC-32:        0x%08X
+                """, self.hexAddr(r.lowerBound), self.hexAddr(r.upperBound - 1), r.count,
+                c.sum8, c.twosComplement8, c.sum16, c.sum32, c.xor8, c.crc32)
+            self.log(text.replacingOccurrences(of: "\n\n", with: "\n"))
+            self.showInfo("Checksums", text)
+        }
+    }
+
+    @objc func resizeBuffer(_ sender: Any?) {
+        guard requireBinaryBuffer(allowEmpty: true) else { return }
+        let target = chipDetails.map { $0.codeSize } ?? 0
+        askFields("Resize buffer", "Cuts the buffer short, or extends it with the pad value. Currently \(hexAddr(buffer.count)) (\(buffer.count)) bytes. \(numberHelp)",
+                  [("New size:", String(format: "%X", target > 0 ? target : buffer.count)), ("Pad with:", "FF")], ok: "Resize") { [weak self] v in
+            guard let self = self else { return }
+            guard let n = BufferOps.parseNumber(v[0]), n > 0, n <= 256 << 20 else { self.showError("Invalid size.", self.numberHelp); return }
+            guard let p = BufferOps.parsePattern(v[1]), !p.contains(where: { $0 == nil }) else { self.showError("Invalid pad value.", "Use a hex byte such as FF."); return }
+            let old = self.buffer.count
+            if n > old {
+                self.hexEditor.edit { $0.replace(old..<old, with: BufferOps.fill(count: n - old, pattern: p.compactMap { $0 })) }
+            } else if n < old {
+                self.hexEditor.edit { b in b.replace(n..<old, with: Data()); return nil }
+            }
+            self.log("Buffer resized from \(old) to \(n) bytes.")
+        }
+    }
+
+    /// Edit ▸ Undo/Redo when neither the hex grid nor the text view has the keyboard focus.
+    @objc func undo(_ sender: Any?) { undoBufferEdit(sender) }
+    @objc func redo(_ sender: Any?) { redoBufferEdit(sender) }
+
+    @objc func undoBufferEdit(_ sender: Any?) {
+        if bufferIsText { textEditor.undoManager?.undo(); return }
+        guard hexEditor.buffer.canUndo else { NSSound.beep(); return }
+        hexEditor.undo(sender)
+    }
+
+    @objc func redoBufferEdit(_ sender: Any?) {
+        if bufferIsText { textEditor.undoManager?.redo(); return }
+        guard hexEditor.buffer.canRedo else { NSSound.beep(); return }
+        hexEditor.redo(sender)
     }
 
     // MARK: Window

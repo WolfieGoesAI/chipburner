@@ -117,6 +117,28 @@ for (k, v) in families.sorted(by: { $0.value.count > $1.value.count }) {
     print("FL \(k): \(v.count) [\(s)] \(v.kinds.sorted().joined(separator: "/")) e.g. \(v.examples.joined(separator: ", "))")
 }
 
+// Buffer editing
+var eb = EditableBuffer(Data([0x00, 0x11, 0x22, 0x33]))
+eb.setByte(1, 0xAA)
+eb.replace(2..<4, with: Data([0xFF, 0xFF, 0xFF]))
+expect(eb.data == Data([0x00, 0xAA, 0xFF, 0xFF, 0xFF]), "buffer edits: set byte, replace with longer range")
+eb.undo(); expect(eb.data == Data([0x00, 0xAA, 0x22, 0x33]), "undo restores the replaced range")
+eb.undo(); expect(eb.data == Data([0x00, 0x11, 0x22, 0x33]) && !eb.canUndo, "undo restores the byte")
+eb.redo(); eb.redo(); expect(eb.data == Data([0x00, 0xAA, 0xFF, 0xFF, 0xFF]) && !eb.canRedo, "redo replays both edits")
+eb.replace(1..<5, with: Data()); expect(eb.data == Data([0x00]), "truncate"); eb.undo(); expect(eb.count == 5, "undo truncate")
+expect(BufferOps.parseNumber("1F00") == 0x1F00 && BufferOps.parseNumber("0x10") == 16 && BufferOps.parseNumber("$FF") == 255
+       && BufferOps.parseNumber("100h") == 256 && BufferOps.parseNumber("#100") == 100 && BufferOps.parseNumber("32K") == 32768
+       && BufferOps.parseNumber("xyz") == nil, "number parsing: hex, 0x, $, h, #decimal, K")
+expect(BufferOps.parsePattern("55 AA") ?? [] == [0x55, 0xAA] && BufferOps.parsePattern("55AA") ?? [] == [0x55, 0xAA]
+       && BufferOps.parsePattern("C3 ?? 12") ?? [] == [0xC3, nil, 0x12] && BufferOps.parsePattern("\"AB\"") ?? [] == [0x41, 0x42]
+       && BufferOps.parsePattern("ZZ") == nil, "pattern parsing: hex, packed hex, wildcard, text")
+let hay = Data([0x00, 0xC3, 0x10, 0x20, 0xC3, 0x99, 0x20])
+expect(BufferOps.find([0xC3, nil, 0x20], in: hay, from: 0) == 1 && BufferOps.find([0xC3, nil, 0x20], in: hay, from: 2) == 4
+       && BufferOps.find([0xC3, nil, 0x20], in: hay, from: 5) == 1 && BufferOps.find([0x77], in: hay, from: 0) == nil, "find with wildcard and wrap-around")
+expect(BufferOps.fill(count: 5, pattern: [0x55, 0xAA]) == Data([0x55, 0xAA, 0x55, 0xAA, 0x55]), "fill with repeating pattern")
+let cs = BufferOps.checksums(Data("123456789".utf8))
+expect(cs.crc32 == 0xCBF43926 && cs.sum16 == 0x01DD && cs.sum8 == 0xDD && cs.twosComplement8 == 0x23 && cs.xor8 == 0x31, "checksums of \"123456789\" (CRC-32 check value CBF43926)")
+
 let plds = db.names(of: .pld, programmer: "TL866A")
 print("  PLDs for TL866A (\(plds.count)): \(plds.joined(separator: " "))")
 
