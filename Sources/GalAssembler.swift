@@ -177,14 +177,14 @@ enum GalAssembler {
         case equals, and, or
     }
 
-    private struct Equation {
+    fileprivate struct Equation {
         var line: Int
         var lhs: LHS
         var rhs: [Pin]
         var isOr: [Bool]
     }
 
-    private enum LHS { case pin(Pin, Suffix), ar, sp }
+    fileprivate enum LHS { case pin(Pin, Suffix), ar, sp }
 
     private static func isAlpha(_ c: Character) -> Bool { c.isASCII && c.isLetter }
     private static func isAlnum(_ c: Character) -> Bool { c.isASCII && (c.isLetter || c.isNumber) }
