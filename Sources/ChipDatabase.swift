@@ -27,6 +27,7 @@ struct ChipInfo {
     let dataSize: Int
     let database: String   // e.g. INFOIC, INFOIC2PLUS, LOGIC
     let pins: Int          // logic chips only
+    var configName = ""    // name of the fuse/lock layout in <configurations>, "" if none
     var flags: UInt32 = 0  // minipro device flags (bit 0x10 = chip has an erase command)
     var hasFlags = false
     /// nil when the database entry carries no flags.
@@ -67,6 +68,16 @@ struct ChipInfo {
     }
 }
 
+/// Fuse, lock and user-ID layout of a microcontroller (infoic.xml <configurations>).
+struct ChipConfig {
+    struct Item { let name: String; let mask: UInt16; let defaultValue: UInt16 }
+    var fuses: [Item] = []
+    var locks: [Item] = []
+    var userIDs = 0            // number of user ID words (PIC); named user_id0 … by minipro
+    var otherSections: [String] = []
+    var isEmpty: Bool { fuses.isEmpty && locks.isEmpty && userIDs == 0 }
+}
+
 /// Loads minipro's XML databases once and answers lookups by name and by chip ID.
 final class ChipDatabase {
     static let shared = ChipDatabase()
@@ -76,6 +87,7 @@ final class ChipDatabase {
     private var byName: [String: [ChipInfo]] = [:]   // uppercased name -> entries (one per database)
     private(set) var databaseTypes: [String] = []
     private var all: [ChipInfo] = []
+    private var configs: [String: ChipConfig] = [:]   // "DATABASE|name"
     private let lock = NSLock()
 
     /// Parses both files (call off the main thread; takes a second or two).
@@ -91,6 +103,7 @@ final class ChipDatabase {
                 errors.append("\(url.lastPathComponent): \(parser.parserError?.localizedDescription ?? "parse error")")
             }
             entries += d.entries
+            for (k, v) in d.configs { configs[k] = v }
             for t in d.types where !types.contains(t) { types.append(t) }
         }
         var index: [String: [ChipInfo]] = [:]
@@ -137,6 +150,14 @@ final class ChipDatabase {
         }
     }
 
+    /// The fuse/lock/user-ID layout of a chip, if it has one.
+    func config(for chip: ChipInfo) -> ChipConfig? {
+        guard !chip.configName.isEmpty else { return nil }
+        lock.lock(); defer { lock.unlock() }
+        if let c = configs[chip.database + "|" + chip.configName] { return c }
+        return configs.first(where: { $0.key.hasSuffix("|" + chip.configName) })?.value
+    }
+
     var count: Int { lock.lock(); defer { lock.unlock() }; return all.count }
 
     /// Logic chip groups (chips sharing test vectors) with this pin count, for auto-identify.
@@ -177,6 +198,12 @@ final class ChipDatabase {
         private var pendingLogic: (names: String, pins: Int, voltage: String)?
         private var vectorText: String?
         private var logicDone = false
+        // <configurations> being read
+        var configs: [String: ChipConfig] = [:]
+        private var configKey: String?
+        private var configSection = ""
+        private var itemName: String?
+        private var itemText = ""
 
         private func hex(_ s: String?) -> UInt32 {
             guard var s = s?.trimmingCharacters(in: .whitespaces), !s.isEmpty else { return 0 }
@@ -194,6 +221,22 @@ final class ChipDatabase {
                 guard let names = attr["name"] else { return }
                 pendingLogic = (names, Int(attr["pins"] ?? "") ?? 0, attr["voltage"] ?? "")
                 logicDone = false
+            case "config":
+                guard let n = attr["name"] else { return }
+                configKey = database + "|" + n
+                configs[configKey!] = ChipConfig()
+            case "fuses", "locks":
+                if configKey != nil { configSection = elementName }
+            case "fuse", "lock":
+                if configKey != nil { itemName = attr["name"]; itemText = "" }
+            case _ where configKey != nil && attr["count"] != nil:
+                // e.g. a user ID section: only its size is needed
+                let n = Int(attr["count"] ?? "") ?? 0
+                if elementName.lowercased().contains("uid") || elementName.lowercased().contains("user") {
+                    configs[configKey!]?.userIDs = n
+                } else {
+                    configs[configKey!]?.otherSections.append("\(elementName)=\(n)")
+                }
             case "vector" where pendingLogic != nil && !logicDone:
                 vectorText = ""
             case "ic":
@@ -211,6 +254,8 @@ final class ChipDatabase {
                     var info = ChipInfo(name: name, kind: database == "LOGIC" ? .logic : kind, chipID: id,
                                         codeSize: code, dataSize: data, database: database, pins: pins)
                     info.flags = flags
+                    let cfg = attr["config"] ?? ""
+                    info.configName = cfg == "NULL" ? "" : cfg
                     info.hasFlags = flagText != nil
                     entries.append(info)
                 }
@@ -220,9 +265,22 @@ final class ChipDatabase {
 
         func parser(_ parser: XMLParser, foundCharacters string: String) {
             if vectorText != nil { vectorText! += string }
+            if itemName != nil { itemText += string }
         }
 
         func parser(_ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?, qualifiedName qName: String?) {
+            if (elementName == "fuse" || elementName == "lock"), let key = configKey, let name = itemName {
+                let parts = itemText.split(separator: ",").map { s -> UInt16 in
+                    var t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if t.hasPrefix("0x") || t.hasPrefix("0X") { t.removeFirst(2) }
+                    return UInt16(t, radix: 16) ?? 0
+                }
+                let item = ChipConfig.Item(name: name, mask: parts.first ?? 0xFF, defaultValue: parts.count > 1 ? parts[1] : 0xFF)
+                if elementName == "fuse" { configs[key]?.fuses.append(item) } else { configs[key]?.locks.append(item) }
+                itemName = nil
+                return
+            }
+            if elementName == "config" { configKey = nil; configSection = ""; return }
             if elementName == "vector", let text = vectorText {
                 vectorText = nil
                 addLogic(vector: text)

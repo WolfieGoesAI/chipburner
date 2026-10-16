@@ -76,6 +76,24 @@ for n in ["X28C256", "AT28C256", "W27C512@DIP28", "AM27C256@DIP28", "GAL16V8", "
 expect(db.info(for: "GAL16V8", programmer: "TL866A")?.canErase == true, "GAL16V8 has an erase command")
 expect(db.info(for: "AM27C256@DIP28", programmer: "TL866A")?.canErase == false, "AM27C256 (UV EPROM) has no erase command")
 
+for n in ["PIC16F84A", "PIC16F628A", "ATMEGA8A", "ATMEGA88PA", "ATTINY2313", "AT89C2051", "AT89S52"] {
+    guard let i = db.info(for: n, programmer: "TL866A") else { print("  \(n): not found"); continue }
+    if let c = db.config(for: i) {
+        let f = c.fuses.map { String(format: "%@ mask %04X def %04X", $0.name, $0.mask, $0.defaultValue) }
+        let l = c.locks.map { String(format: "%@ mask %04X def %04X", $0.name, $0.mask, $0.defaultValue) }
+        print("  \(n) config \(i.configName): fuses [\(f.joined(separator: "; "))] locks [\(l.joined(separator: "; "))] userIDs \(c.userIDs) other \(c.otherSections)")
+    } else { print("  \(n): config '\(i.configName)' – none found") }
+}
+expect(db.info(for: "ATMEGA8A", programmer: "TL866A").flatMap { db.config(for: $0) }.map { !$0.fuses.isEmpty } == true, "ATMEGA8A has fuses")
+expect(db.info(for: "PIC16F84A", programmer: "TL866A").flatMap { db.config(for: $0) }.map { !$0.isEmpty } == true, "PIC16F84A has a config layout")
+
+let spi = SPIAutodetect.parse("Found TL866A 03.2.86 (0x256)\nDevice code: 12345\nAutodetecting device (ID:0xEF4016)\n2 device(s) found.\nW25Q32BV@SOIC8\nW25Q32FV@SOIC8\n")
+expect(spi.id == 0xEF4016 && spi.names == ["W25Q32BV@SOIC8", "W25Q32FV@SOIC8"], "SPI autodetect output parsed: ID and 2 names")
+
+let cfg = ConfigText.parse("lfuse = 0xe1\nhfuse = 0xd9\nlock = 0x3f\nconf_word = 0x3ffb\nuser_id0 = 0x0001\ncalibration bytes: 0x9a, 0x9b\n")
+expect(cfg == ["lfuse": 0xE1, "hfuse": 0xD9, "lock": 0x3F, "conf_word": 0x3FFB, "user_id0": 0x0001], "config text parsed")
+expect(ConfigText.line("lock", 0x3F, wide: false) == "lock = 0x3f" && ConfigText.line("conf_word", 0x3FFB, wide: true) == "conf_word = 0x3ffb", "config text written in minipro's format")
+
 let plds = db.names(of: .pld, programmer: "TL866A")
 print("  PLDs for TL866A (\(plds.count)): \(plds.joined(separator: " "))")
 

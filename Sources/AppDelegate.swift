@@ -70,6 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         chipMenu.addItem(withTitle: "Check Programmer", action: #selector(MainWindowController.checkProgrammer(_:)), keyEquivalent: "k")
         chipMenu.addItem(withTitle: "Search Chips…", action: #selector(MainWindowController.searchChips(_:)), keyEquivalent: "f")
         chipMenu.addItem(withTitle: "Identify Chip…", action: #selector(MainWindowController.identifyChip(_:)), keyEquivalent: "i")
+        chipMenu.addItem(withTitle: "Fuses, User ID & Lock Bits…", action: #selector(MainWindowController.openConfigWindow(_:)), keyEquivalent: "u")
         chipMenu.addItem(.separator())
         chipMenu.addItem(withTitle: "Read", action: #selector(MainWindowController.readChip(_:)), keyEquivalent: "r")
         chipMenu.addItem(withTitle: "Blank Check", action: #selector(MainWindowController.blankCheck(_:)), keyEquivalent: "b")

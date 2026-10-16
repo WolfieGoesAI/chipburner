@@ -33,6 +33,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     private var actionButtons: [NSButton] = []
     private var stopButton: NSButton!
     private var eraseButton: NSButton!
+    private lazy var configButton: NSButton = button("Fuses & Locks…", #selector(openConfigWindow(_:)))
     private let skipID = NSButton(checkboxWithTitle: "Skip chip ID check", target: nil, action: nil)
     private let allowSize = NSButton(checkboxWithTitle: "Allow file size mismatch", target: nil, action: nil)
     private let skipErase = NSButton(checkboxWithTitle: "Don't erase before programming", target: nil, action: nil)
@@ -144,7 +145,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         let chipRow = row([bold("Chip:"), chipField,
                            button("Search…", #selector(searchChips(_:))),
                            button("Identify…", #selector(identifyChip(_:))),
-                           button("Chip Info", #selector(chipInfo(_:))), spacer()])
+                           button("Chip Info", #selector(chipInfo(_:))),
+                           configButton, spacer()])
 
         chipInfoLabel.textColor = .secondaryLabelColor
         chipInfoLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
@@ -460,6 +462,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
 
     private func updateEnabledState() {
         actionButtons.forEach { $0.isEnabled = !isBusy }
+        configButton.isEnabled = !isBusy && currentConfig != nil
+        configButton.toolTip = currentConfig != nil ? "Read and write this chip's fuses, user ID and lock bits in a separate window."
+                                                    : "The selected chip has no fuses, user ID or lock bits in the database."
         if let b = eraseButton {
             let m = eraseMethod
             if case .unavailable(let why) = m { b.isEnabled = false; b.toolTip = why }
@@ -542,7 +547,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     // MARK: Settings sheet
 
     private func loadSettings() {
-        unprotect.toolTip = "Turns off write protection (such as the software data protection of 28C256 EEPROMs) before writing or erasing (minipro -u)."
+        unprotect.toolTip = "Turns off write protection (such as the software data protection of parallel EEPROMs) before writing or erasing (minipro -u)."
         protectAfter.toolTip = "Turns write protection on again after writing (minipro -P)."
         skipID.toolTip = "Reads or writes even if the chip's electronic ID doesn't match (minipro -x / -y)."
         allowSize.toolTip = "Writes or verifies even if the file size differs from the chip size (minipro -s)."
@@ -721,31 +726,83 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     }
 
     /// Reads the electronic ID with a reference algorithm, then lists every database chip with that ID.
+    private enum IDMethod { case eprom(String), spi(Int) }
+
     @objc func identifyChip(_ sender: Any?) {
         guard let w = window, !isBusy else { return }
-        if !chip.isEmpty, Self.isEEPROM(chip) {
-            showError("Identify can't be used with \(chip).",
-                      "Identify reads the ID the EPROM way, with about 12 V on pin A9. EEPROMs such as the 28C256 aren't made for that and can be damaged. Their ID isn't needed: choose the chip with Search, and use Skip chip ID check if it has no ID in the database.")
-            return
-        }
         guard ChipDatabase.shared.isLoaded else { showError("The chip database is still loading.", "Try again in a moment."); return }
-        var refs: [(String, String)] = [
-            ("28-pin UV EPROM (27C64 to 27C512)", "AM27C256@DIP28"),
-            ("32-pin UV EPROM (27C010 to 27C080)", "AM27C010@DIP32"),
+        var choices: [(String, IDMethod)] = [
+            ("SPI flash (25-series), 8 pins", .spi(8)),
+            ("SPI flash (25-series), 16-pin SOIC adapter", .spi(16)),
+            ("28-pin UV EPROM (27C64 to 27C512)", .eprom("AM27C256@DIP28")),
+            ("32-pin UV EPROM (27C010 to 27C080)", .eprom("AM27C010@DIP32")),
         ]
-        if !chip.isEmpty, chipDetails != nil, Self.isUVEPROM(chip) || chip.uppercased().hasPrefix("W27") { refs.append(("Same type as \(chip)", chip)) }
-        let popup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 320, height: 26), pullsDown: false)
-        refs.forEach { popup.addItem(withTitle: $0.0) }
+        if !chip.isEmpty, chipDetails != nil, Self.isUVEPROM(chip) || chip.uppercased().hasPrefix("W27") {
+            choices.append(("Same type as \(chip)", .eprom(chip)))
+        }
+        let popup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 340, height: 26), pullsDown: false)
+        choices.forEach { popup.addItem(withTitle: $0.0) }
+        let last = UserDefaults.standard.integer(forKey: "identifyChoice")
+        if last < choices.count { popup.selectItem(at: last) }
         let a = NSAlert()
         a.messageText = "Identify chip"
-        a.informativeText = "Put the chip in the socket (bottom-aligned, pin 1 at the lever end) and choose what kind of chip it is. ChipBurner reads its electronic ID and lists the chips that match. Old NMOS parts such as 2716 and 2732 have no ID.\n\nOnly for EPROMs: the ID read puts about 12 V on pin A9. Don't use it with EEPROMs such as the 28C256."
+        a.informativeText = """
+            Put the chip in the socket (bottom-aligned, pin 1 at the lever end) and choose what kind of chip it is. \
+            ChipBurner reads its electronic ID and lists the chips that match.
+
+            SPI flash is read at 3.3 V with the standard JEDEC ID command. 1.8 V chips need a 1.8 V adapter.
+
+            UV EPROMs are read the EPROM way, with about 12 V on pin A9. Never use this with EEPROMs or other \
+            chip types – they aren't made for that voltage and can be damaged. Old NMOS EPROMs have no ID.
+            """
         a.accessoryView = popup
         a.addButton(withTitle: "Read ID")
         a.addButton(withTitle: "Cancel")
         a.beginSheetModal(for: w) { [weak self] resp in
             guard let self = self, resp == .alertFirstButtonReturn else { return }
-            let ref = refs[max(0, popup.indexOfSelectedItem)].1
-            self.runIdentify(reference: ref)
+            let i = max(0, popup.indexOfSelectedItem)
+            UserDefaults.standard.set(i, forKey: "identifyChoice")
+            switch choices[i].1 {
+            case .spi(let pins):
+                self.runSPIAutodetect(pins: pins)
+            case .eprom(let ref):
+                if !self.chip.isEmpty, Self.isEEPROM(self.chip) {
+                    self.showError("The EPROM ID read can't be used with \(self.chip).",
+                                   "It puts about 12 V on pin A9. EEPROMs aren't made for that and can be damaged. Choose the chip with Search instead, and use Skip chip ID check in Settings if it has no ID in the database.")
+                    return
+                }
+                self.runIdentify(reference: ref)
+            }
+        }
+    }
+
+    /// minipro -a 8|16 reads the JEDEC ID of a 25-series SPI flash and lists the chips that have it.
+    private func runSPIAutodetect(pins: Int) {
+        guard let w = window else { return }
+        runJob("Auto-detect SPI flash (\(pins) pins)", ["-a", "\(pins)"]) { [weak self] ok, output in
+            guard let self = self else { return }
+            let r = SPIAutodetect.parse(output)
+            let programmer = Minipro.shared.programmerType
+            var names = r.names
+            if ChipDatabase.shared.isLoaded {
+                let known = names.filter { ChipDatabase.shared.info(for: $0, programmer: programmer) != nil }
+                if !known.isEmpty { names = known }
+            }
+            let idText = r.id.map { String(format: "0x%04X", $0) } ?? "?"
+            guard ok, let id = r.id, id != 0, id != 0xFFFF, id != 0xFFFFFF, id != 0xFFFFFFFF else {
+                self.showError("No SPI flash ID could be read.",
+                               "Check that the chip sits correctly (pin 1 at the lever end, bottom-aligned, or in the right adapter) and that it is a 25-series SPI flash. Press Log for minipro's message.")
+                return
+            }
+            guard !names.isEmpty else {
+                self.showInfo("SPI flash ID \(idText) read", "No chip in the \(programmer) database has this ID. The maker code is 0x\(String(format: "%02X", (id >> 16) & 0xFF == 0 ? (id >> 8) & 0xFF : (id >> 16) & 0xFF)).")
+                return
+            }
+            let picker = ChipSearchController(title: "SPI flash with ID \(idText)", results: names) { [weak self] name in
+                guard let self = self, let name = name else { return }
+                self.selectChip(name)
+            }
+            picker.present(on: w)
         }
     }
 
@@ -892,7 +949,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         return n.range(of: "^[A-Z]{0,4}27C?[0-9]{2,4}", options: .regularExpression) != nil
     }
 
-    /// Parallel EEPROMs (28C64, X28C256, AT28C256 …) – Identify must not be used on them.
+    /// Parallel EEPROMs (28-series names) – the EPROM ID read must not be used on them.
     static func isEEPROM(_ name: String) -> Bool {
         name.uppercased().range(of: "^[A-Z]{0,4}28(C|HC|LV|F)?[0-9]{2,4}", options: .regularExpression) != nil
     }
@@ -1100,6 +1157,27 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     }
 
     /// Decodes the .jed in the buffer (or a chosen .jed file) into equations and a gate diagram.
+    private var currentConfig: ChipConfig? {
+        guard let info = chipDetails, let c = ChipDatabase.shared.config(for: info), !c.isEmpty else { return nil }
+        return c
+    }
+
+    @objc func openConfigWindow(_ sender: Any?) {
+        guard requireChip(), connectionAllowed() else { return }
+        guard let config = currentConfig else {
+            showError("\(chip) has no fuses, user ID or lock bits in the database.", "")
+            return
+        }
+        var base = ["-p", chip] + connectionArgs
+        if skipID.state == .on { base.append("-y") }
+        let c = ConfigWindowController(chip: chip, config: config, baseArgs: base) { [weak self] title, args, done in
+            guard let self = self else { return }
+            if self.isBusy { NSSound.beep(); return }
+            self.runJob(title, args, then: done)
+        }
+        c.showWindow(nil)
+    }
+
     @objc func decodeJED(_ sender: Any?) {
         guard let w = window else { return }
         let hint = chip.isEmpty ? nil : chip
