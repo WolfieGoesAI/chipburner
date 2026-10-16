@@ -31,6 +31,58 @@ jobs:
         run: |
           APP_VERSION="${APP_VERSION#v}" bash scripts/build.sh
 
+      - name: Diagnostics 1
+        if: always()
+        run: |
+          [ -f diag.txt ] || exit 0
+          python3 - <<'PY'
+          d = open("diag.txt", encoding="utf-8", errors="replace").read()
+          size = 3500
+          chunks = [d[i:i + size] for i in range(0, len(d), size)][0:10]
+          for k, c in enumerate(chunks):
+              c = c.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+              print(f"::notice title=diag part {k + 0}::{c}")
+          PY
+
+      - name: Diagnostics 2
+        if: always()
+        run: |
+          [ -f diag.txt ] || exit 0
+          python3 - <<'PY'
+          d = open("diag.txt", encoding="utf-8", errors="replace").read()
+          size = 3500
+          chunks = [d[i:i + size] for i in range(0, len(d), size)][10:20]
+          for k, c in enumerate(chunks):
+              c = c.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+              print(f"::notice title=diag part {k + 10}::{c}")
+          PY
+
+      - name: Diagnostics 3
+        if: always()
+        run: |
+          [ -f diag.txt ] || exit 0
+          python3 - <<'PY'
+          d = open("diag.txt", encoding="utf-8", errors="replace").read()
+          size = 3500
+          chunks = [d[i:i + size] for i in range(0, len(d), size)][20:30]
+          for k, c in enumerate(chunks):
+              c = c.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+              print(f"::notice title=diag part {k + 20}::{c}")
+          PY
+
+      - name: Diagnostics 4
+        if: always()
+        run: |
+          [ -f diag.txt ] || exit 0
+          python3 - <<'PY'
+          d = open("diag.txt", encoding="utf-8", errors="replace").read()
+          size = 3500
+          chunks = [d[i:i + size] for i in range(0, len(d), size)][30:40]
+          for k, c in enumerate(chunks):
+              c = c.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+              print(f"::notice title=diag part {k + 30}::{c}")
+          PY
+
       - name: Upload app
         uses: actions/upload-artifact@v4
         with:

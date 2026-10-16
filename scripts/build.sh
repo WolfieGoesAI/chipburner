@@ -212,9 +212,13 @@ diag "-L 25Q" "$("$APP/Contents/MacOS/minipro" "${DBARGS[@]}" -q TL866A -L W25Q 
 diag "infoic fuses for ATMEGA8A" "$(grep -n -i -B2 -A20 'name="ATMEGA8A' "$APP/Contents/Resources/minipro/infoic.xml" | head -30 | tr -s ' ')"
 diag "infoic fuse sections" "$(grep -n -i -E '<(fuse|config|lock|uid)[a-z_]*' "$APP/Contents/Resources/minipro/infoic.xml" | head -20 | tr -s ' ')"
 
-echo "$DIAG"
-note "Diagnostics A" "$(head -c 30000 <<<"$DIAG")"
-note "Diagnostics B" "$(tail -c +30001 <<<"$DIAG" | head -c 30000)"
+M="$WORK/src/minipro-git/src/main.c"
+diag "main.c spi_autodetect_and_exit" "$(sed -n '/^void spi_autodetect_and_exit/,/^}/p' "$M" | head -80)"
+diag "main.c fuse/config lines" "$(grep -n -i -E 'fuse|config|uid|lock' "$M" | head -80 | cut -c1-180)"
+diag "fuse source files" "$(grep -l -i -E 'fuse' "$WORK/src/minipro-git/src"/*.c)"
+FZ="$(grep -l -E 'write_config|read_config|fuse_decl|config_t' "$WORK/src/minipro-git/src"/*.c | head -3)"
+for f in $FZ; do diag "config code in $(basename "$f")" "$(grep -n -E 'printf|sscanf|strto|=|name' "$f" | grep -i -E 'fuse|conf|lock|uid|user|0x|%' | head -60 | cut -c1-180)"; done
+printf '%s' "$DIAG" > "$ROOT/diag.txt"
 
 # ---------- sign and package ----------
 log "Ad-hoc signing"
