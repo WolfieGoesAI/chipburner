@@ -194,30 +194,19 @@ GT="$("$WORK/galtest" "$ROOT/tests/gal/cases" 2>&1)" || { echo "$GT"; note "JED 
 echo "$GT"
 note "JED decoder test" "$(grep -v '^;' <<<"$GT" | tail -40)"
 
-log "Diagnostics: auto-detect and config pages"
+log "Diagnostics: config pages"
 DIAG=""
 diag() { DIAG+="### $1"$'\n'"$2"$'\n\n'; }
-diag "man: -a auto detect" "$(grep -E -A10 '^[[:space:]]*-a <type>' <<<"$MANTXT" | tr -s ' ')"
-diag "man: -c page / fuses" "$(grep -E -A14 '^[[:space:]]*-c, --page' <<<"$MANTXT" | tr -s ' ')"
-diag "man: --fuses --uid --lock" "$(grep -E -B4 -A10 -- '--fuses, --uid' <<<"$MANTXT" | tr -s ' ')"
-diag "man: -f format" "$(grep -E -A10 '^[[:space:]]*-f, --format' <<<"$MANTXT" | tr -s ' ')"
-diag "source: auto detect" "$(grep -rn -i -E 'auto_detect|autodetect|spi_autodetect' "$WORK/src/minipro-git/src"/*.c 2>/dev/null | head -30 | cut -c1-200)"
-diag "source: fuse file writer" "$(grep -rn -E 'fprintf\(.*(=|0x%)|\"user_id|\"lock|conf_word|fuses_' "$WORK/src/minipro-git/src/main.c" 2>/dev/null | head -40 | cut -c1-200)"
-diag "source: config text format" "$(grep -rn -E '%s ?= ?0x|= ?0x%|fuses|user_id|lock_bit' "$WORK/src/minipro-git/src"/*.c 2>/dev/null | grep -v '^.*://' | head -60 | cut -c1-220)"
-SRCF="$(ls "$WORK/src/minipro-git/src")"; diag "source files" "$SRCF"
-for c in ATMEGA8A@DIP28 ATTINY85@DIP8 PIC16F628A AT89S52@DIP40 W25Q32BV@SOIC8; do
-  diag "-d $c" "$("$APP/Contents/MacOS/minipro" "${DBARGS[@]}" -q TL866A -d "$c" 2>&1 | grep -v overridden | head -16)"
-done
-diag "-L 25Q" "$("$APP/Contents/MacOS/minipro" "${DBARGS[@]}" -q TL866A -L W25Q 2>&1 | grep -v overridden | head -12)"
-diag "infoic fuses for ATMEGA8A" "$(grep -n -i -B2 -A20 'name="ATMEGA8A' "$APP/Contents/Resources/minipro/infoic.xml" | head -30 | tr -s ' ')"
-diag "infoic fuse sections" "$(grep -n -i -E '<(fuse|config|lock|uid)[a-z_]*' "$APP/Contents/Resources/minipro/infoic.xml" | head -20 | tr -s ' ')"
-
 M="$WORK/src/minipro-git/src/main.c"
-diag "main.c spi_autodetect_and_exit" "$(sed -n '/^void spi_autodetect_and_exit/,/^}/p' "$M" | head -80)"
-diag "main.c fuse/config lines" "$(grep -n -i -E 'fuse|config|uid|lock' "$M" | head -80 | cut -c1-180)"
-diag "fuse source files" "$(grep -l -i -E 'fuse' "$WORK/src/minipro-git/src"/*.c)"
-FZ="$(grep -l -E 'write_config|read_config|fuse_decl|config_t' "$WORK/src/minipro-git/src"/*.c | head -3)"
-for f in $FZ; do diag "config code in $(basename "$f")" "$(grep -n -E 'printf|sscanf|strto|=|name' "$f" | grep -i -E 'fuse|conf|lock|uid|user|0x|%' | head -60 | cut -c1-180)"; done
+X="$APP/Contents/Resources/minipro/infoic.xml"
+diag "main.c read_fuses..write_fuses" "$(sed -n '/^int read_fuses/,/^int write_fuses/p' "$M" | head -170)"
+diag "main.c get_config_value" "$(sed -n '/^int get_config_value/,/^}/p' "$M" | head -50)"
+diag "main.c write_fuses" "$(sed -n '/^int write_fuses/,/^}/p' "$M" | head -140)"
+L="$(grep -n '<configurations' "$X" | head -1 | cut -d: -f1)"
+diag "infoic configurations sample" "$(sed -n "${L},$((L+70))p" "$X" | tr -s ' ')"
+diag "infoic config attribute on ic" "$(grep -n -E 'config="[^"]+"' "$X" | head -5 | tr -s ' ')"
+diag "ic entries with config" "$(grep -n -B14 -m3 -E '^[[:space:]]*config="' "$X" | tr -s ' ' | head -60)"
+for q in ATMEGA8 ATTINY2313 PIC16F84 AT89C2051; do diag "-L $q" "$("$APP/Contents/MacOS/minipro" "${DBARGS[@]}" -q TL866A -L $q 2>&1 | grep -v overridden | head -8)"; done
 printf '%s' "$DIAG" > "$ROOT/diag.txt"
 
 # ---------- sign and package ----------
