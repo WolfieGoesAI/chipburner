@@ -12,7 +12,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     private var scanCancelled = false
     private var logWindow: NSWindow?
     private let connectionPopup = NSPopUpButton(frame: .zero, pullsDown: false)
-    private let voltageLabel = NSTextField(labelWithString: "Voltages: chip defaults")
+    private let voltageLabel = NSTextField(labelWithString: "chip defaults")
     private var voltages = VoltageOverrides()
     private var voltagesChip = ""
     private var caps: [String: ChipCapabilities] = [:]   // "PROGRAMMER:CHIP" -> what minipro -d reports
@@ -39,6 +39,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     private let skipVerify = NSButton(checkboxWithTitle: "Don't verify after programming", target: nil, action: nil)
     private let unprotect = NSButton(checkboxWithTitle: "Unprotect before writing", target: nil, action: nil)
     private let protectAfter = NSButton(checkboxWithTitle: "Protect after writing", target: nil, action: nil)
+    private let settingsLabel = NSTextField(labelWithString: "")
+    /// Checkbox, UserDefaults key, short name for the summary next to Settings….
+    private var settingBoxes: [(box: NSButton, key: String, short: String)] {
+        [(skipID, "skipID", "skip ID check"), (allowSize, "allowSize", "allow size mismatch"),
+         (skipErase, "skipErase", "no erase before write"), (skipVerify, "skipVerify", "no verify"),
+         (unprotect, "unprotect", "unprotect"), (protectAfter, "protectAfter", "protect after write")]
+    }
 
     /// Memory types minipro selects with -c. Titles shown in the popup, argument passed to minipro.
     private let memoryTypes: [(title: String, arg: String?)] = [
@@ -156,32 +163,43 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         let actionRow = row([read, blank, program, verify, erase, logic, logicID, spacer(), stopButton])
 
         memoryTypes.forEach { memoryPopup.addItem(withTitle: $0.title) }
-        memoryPopup.controlSize = .small
-        memoryPopup.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        let memLabel = NSTextField(labelWithString: "Memory:")
-        memLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        [skipID, allowSize, skipErase, skipVerify, unprotect, protectAfter].forEach { $0.controlSize = .small; $0.font = .systemFont(ofSize: NSFont.smallSystemFontSize) }
-        unprotect.toolTip = "Turns off write protection (such as the software data protection of 28C256 EEPROMs) before writing or erasing (minipro -u)."
-        protectAfter.toolTip = "Turns write protection on again after writing (minipro -P)."
-        unprotect.state = UserDefaults.standard.bool(forKey: "unprotect") ? .on : .off
-        protectAfter.state = UserDefaults.standard.bool(forKey: "protectAfter") ? .on : .off
-        unprotect.target = self; unprotect.action = #selector(protectionChanged(_:))
-        protectAfter.target = self; protectAfter.action = #selector(protectionChanged(_:))
-        let optionsRow = row([memLabel, memoryPopup, skipID, allowSize, skipErase, skipVerify, spacer()])
-        let protectRow = row([unprotect, protectAfter, spacer()])
-
         ["ZIF socket", "ICSP – power from programmer", "ICSP – board has its own power"].forEach { connectionPopup.addItem(withTitle: $0) }
-        connectionPopup.controlSize = .small
-        connectionPopup.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        let connLabel = NSTextField(labelWithString: "Connection:")
-        connLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        voltageLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        voltageLabel.textColor = .secondaryLabelColor
-        voltageLabel.lineBreakMode = .byTruncatingTail
+        loadSettings()
+
+        // Memory, connection, voltages and settings share one aligned column.
+        let small = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+        let controlWidth: CGFloat = 240
         let voltButton = button("Voltages…", #selector(editVoltages(_:)))
-        voltButton.controlSize = .small
-        voltButton.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        let connectionRow = row([connLabel, connectionPopup, spacer(), voltageLabel, voltButton])
+        let settingsButton = button("Settings…", #selector(showSettings(_:)))
+        for c in [memoryPopup, connectionPopup, voltButton, settingsButton] as [NSControl] {
+            c.controlSize = .small
+            c.font = small
+            c.widthAnchor.constraint(equalToConstant: controlWidth).isActive = true
+        }
+        for l in [voltageLabel, settingsLabel] {
+            l.font = small
+            l.textColor = .secondaryLabelColor
+            l.lineBreakMode = .byTruncatingTail
+        }
+        func label(_ t: String) -> NSTextField {
+            let l = NSTextField(labelWithString: t)
+            l.font = small
+            l.alignment = .right
+            return l
+        }
+        let empty = { () -> NSView in NSView() }
+        let grid = NSGridView(views: [
+            [label("Memory:"), memoryPopup, empty()],
+            [label("Connection:"), connectionPopup, empty()],
+            [label("Voltages:"), voltButton, voltageLabel],
+            [label("Options:"), settingsButton, settingsLabel],
+        ])
+        grid.rowSpacing = 6
+        grid.columnSpacing = 8
+        grid.rowAlignment = .firstBaseline
+        grid.column(at: 0).xPlacement = .trailing
+        grid.column(at: 1).xPlacement = .leading
+        updateSettingsLabel()
 
         bufferLabel.lineBreakMode = .byTruncatingMiddle
         bufferLabel.isSelectable = true
@@ -204,13 +222,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         let logButton = button("Log", #selector(toggleLog(_:)))
         let statusRow = row([statusLabel, spacer(), progress, logButton])
 
-        let rows: [NSView] = [progRow, chipRow, chipInfoLabel, actionRow, optionsRow, protectRow, connectionRow, fileRow, bufferView, statusRow]
+        let rows: [NSView] = [progRow, chipRow, chipInfoLabel, actionRow, grid, fileRow, bufferView, statusRow]
         let stack = NSStackView(views: rows)
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
         stack.setCustomSpacing(4, after: chipRow)
-        stack.setCustomSpacing(4, after: optionsRow)
         stack.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 12, right: 16)
         stack.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(stack)
@@ -328,15 +345,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
 
     private func updateVoltageLabel() {
         if !voltages.isEmpty {
-            voltageLabel.stringValue = "Voltages: \(voltages.summary)"
+            voltageLabel.stringValue = "\(voltages.summary)"
             voltageLabel.textColor = .systemOrange
             return
         }
         voltageLabel.textColor = .secondaryLabelColor
-        guard let c = currentCaps else { voltageLabel.stringValue = "Voltages: chip defaults"; return }
-        guard c.hasVoltageOptions else { voltageLabel.stringValue = "Voltages: fixed for this chip"; return }
+        guard let c = currentCaps else { voltageLabel.stringValue = "chip defaults"; return }
+        guard c.hasVoltageOptions else { voltageLabel.stringValue = "fixed for this chip"; return }
         let parts = [c.vpp.map { "VPP \($0)" }, c.vdd.map { "VDD \($0)" }, c.vcc.map { "VCC \($0)" }, c.pulse.map { "pulse \($0)" }].compactMap { $0 }
-        voltageLabel.stringValue = "Voltages: defaults (\(parts.joined(separator: ", ")))"
+        voltageLabel.stringValue = "defaults (\(parts.joined(separator: ", ")))"
     }
 
     private var usingICSP: Bool { connectionPopup.indexOfSelectedItem > 0 }
@@ -522,9 +539,81 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         return (unprotect.state == .on ? ["-u"] : []) + (protectAfter.state == .on ? ["-P"] : [])
     }
 
-    @objc private func protectionChanged(_ sender: Any?) {
-        UserDefaults.standard.set(unprotect.state == .on, forKey: "unprotect")
-        UserDefaults.standard.set(protectAfter.state == .on, forKey: "protectAfter")
+    // MARK: Settings sheet
+
+    private func loadSettings() {
+        unprotect.toolTip = "Turns off write protection (such as the software data protection of 28C256 EEPROMs) before writing or erasing (minipro -u)."
+        protectAfter.toolTip = "Turns write protection on again after writing (minipro -P)."
+        skipID.toolTip = "Reads or writes even if the chip's electronic ID doesn't match (minipro -x / -y)."
+        allowSize.toolTip = "Writes or verifies even if the file size differs from the chip size (minipro -s)."
+        skipErase.toolTip = "Programs without erasing first (minipro -e)."
+        skipVerify.toolTip = "Skips the read-back check after programming (minipro -v)."
+        for s in settingBoxes {
+            s.box.state = UserDefaults.standard.bool(forKey: s.key) ? .on : .off
+            s.box.target = self
+            s.box.action = #selector(settingChanged(_:))
+        }
+    }
+
+    @objc private func settingChanged(_ sender: Any?) {
+        for s in settingBoxes { UserDefaults.standard.set(s.box.state == .on, forKey: s.key) }
+        updateSettingsLabel()
+    }
+
+    private func updateSettingsLabel() {
+        let on = settingBoxes.filter { $0.box.state == .on }.map { $0.short }
+        settingsLabel.stringValue = on.isEmpty ? "standard" : on.joined(separator: ", ")
+        settingsLabel.textColor = on.isEmpty ? .secondaryLabelColor : .systemOrange
+    }
+
+    @objc func showSettings(_ sender: Any?) {
+        guard let w = window, !isBusy else { return }
+        let sheet = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: 300),
+                             styleMask: [.titled], backing: .buffered, defer: false)
+        func heading(_ t: String) -> NSTextField {
+            let l = NSTextField(labelWithString: t)
+            l.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
+            return l
+        }
+        let note = NSTextField(wrappingLabelWithString: "These apply to Read, Verify, Program and Erase, and are kept until you change them.")
+        note.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        note.textColor = .secondaryLabelColor
+        for s in settingBoxes { s.box.controlSize = .regular; s.box.font = .systemFont(ofSize: NSFont.systemFontSize) }
+        let done = NSButton(title: "Done", target: self, action: #selector(closeSettings(_:)))
+        done.bezelStyle = .rounded
+        done.keyEquivalent = "\r"
+        let doneRow = NSStackView(views: [spacer(), done])
+        doneRow.orientation = .horizontal
+        let views: [NSView] = [heading("Chip checks"), skipID, allowSize,
+                               heading("Programming"), skipErase, skipVerify,
+                               heading("Write protection"), unprotect, protectAfter,
+                               note, doneRow]
+        let stack = NSStackView(views: views)
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 6
+        stack.edgeInsets = NSEdgeInsets(top: 18, left: 20, bottom: 16, right: 20)
+        for h in [views[3], views[6], views[9]] { stack.setCustomSpacing(14, after: stack.views[stack.views.firstIndex(of: h)! - 1]) }
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        let content = NSView()
+        content.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: content.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            content.widthAnchor.constraint(equalToConstant: 420),
+            note.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
+            doneRow.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
+        ])
+        sheet.contentView = content
+        w.beginSheet(sheet) { [weak self] _ in self?.updateSettingsLabel() }
+    }
+
+    @objc private func closeSettings(_ sender: NSButton) {
+        guard let sheet = sender.window else { return }
+        settingChanged(nil)
+        sheet.sheetParent?.endSheet(sheet)
     }
 
     /// What the selected chip and memory area exchange: minipro's -c argument, text or binary, file extension.
