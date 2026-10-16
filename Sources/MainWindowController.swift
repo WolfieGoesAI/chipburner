@@ -32,6 +32,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
 
     private var actionButtons: [NSButton] = []
     private var stopButton: NSButton!
+    private var eraseButton: NSButton!
     private let skipID = NSButton(checkboxWithTitle: "Skip chip ID check", target: nil, action: nil)
     private let allowSize = NSButton(checkboxWithTitle: "Allow file size mismatch", target: nil, action: nil)
     private let skipErase = NSButton(checkboxWithTitle: "Don't erase before programming", target: nil, action: nil)
@@ -147,6 +148,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         let program = button("Program…", #selector(programChip(_:)))
         let verify = button("Verify", #selector(verifyChip(_:)))
         let erase = button("Erase", #selector(eraseChip(_:)))
+        eraseButton = erase
         let logic = button("Logic Test", #selector(logicTest(_:)))
         let logicID = button("Identify Logic…", #selector(identifyLogic(_:)))
         stopButton = button("Stop", #selector(stop(_:)))
@@ -280,7 +282,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             voltages = VoltageOverrides()
             voltagesChip = chip.uppercased()
         }
-        defer { refreshCapabilities(); updateVoltageLabel() }
+        defer { refreshCapabilities(); updateVoltageLabel(); updateEnabledState() }
         guard ChipDatabase.shared.isLoaded else {
             chipInfoLabel.stringValue = "Loading chip database…"
             return
@@ -441,6 +443,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
 
     private func updateEnabledState() {
         actionButtons.forEach { $0.isEnabled = !isBusy }
+        if let b = eraseButton {
+            let m = eraseMethod
+            if case .unavailable(let why) = m { b.isEnabled = false; b.toolTip = why }
+            else { b.toolTip = m == .command ? "Erases the chip with its erase command." : "This chip has no erase command: it is filled with FF (its blank state) and verified." }
+        }
         stopButton?.isEnabled = isBusy
         chipField.isEnabled = !isBusy
         memoryPopup.isEnabled = !isBusy
@@ -728,22 +735,44 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         }
     }
 
+    enum EraseMethod: Equatable { case command, fill, unavailable(String) }
+
+    /// Erase is offered only for chips that can be erased electrically in the programmer.
+    private var eraseMethod: EraseMethod {
+        guard !chip.isEmpty else { return .unavailable("Choose a chip first.") }
+        guard let info = chipDetails else { return .unavailable("Erase is available once the chip is found in the database.") }
+        if Self.isUVEPROM(chip) && info.canErase != true {
+            return .unavailable("\(chip) is a UV EPROM (or its one-time-programmable version). It can only be erased with UV light in an EPROM eraser.")
+        }
+        if info.canErase == true { return .command }
+        switch info.kind {
+        case .memory where info.codeSize > 0:
+            return .fill
+        case .logic:
+            return .unavailable("Logic chips have no memory to erase.")
+        case .sram:
+            return .unavailable("SRAM loses its contents without power; there is nothing to erase.")
+        default:
+            return .unavailable("\(chip) has no erase command in minipro's database (it may be one-time programmable or need UV light).")
+        }
+    }
+
     @objc func eraseChip(_ sender: Any?) {
         guard requireChip(), connectionAllowed(), let w = window else { return }
-        if Self.isUVEPROM(chip) {
-            showError("\(chip) is a UV EPROM.", "It can only be erased with UV light (an EPROM eraser, typically 10–20 minutes). Use Blank Check afterwards.")
-            return
-        }
+        let method = eraseMethod
+        if case .unavailable(let why) = method { showError("\(chip) can't be erased here.", why); return }
         let a = NSAlert()
         a.messageText = "Erase \(chip)?"
-        a.informativeText = "Chips with an erase command are erased directly. Chips without one, such as 28C256-type EEPROMs, are filled with FF (their blank state) by programming and verifying – only if they aren't blank already."
+        a.informativeText = method == .command
+            ? "The chip is erased with its erase command."
+            : "\(chip) has no erase command. It is filled with FF (its blank state) by programming and verifying – unless a blank check shows it is already blank, which saves a write cycle."
             + (unprotect.state == .on ? "\n\nWrite protection is turned off first." : "")
         a.addButton(withTitle: "Erase")
         a.addButton(withTitle: "Cancel")
         a.beginSheetModal(for: w) { [weak self] resp in
             guard let self = self, resp == .alertFirstButtonReturn else { return }
             let name = self.chip
-            if self.chipDetails?.canErase == false {
+            if method == .fill {
                 self.log("\(name) has no erase command in the database – filling it with FF instead.")
                 self.eraseByFilling(name)
                 return
@@ -751,7 +780,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             let unprot = self.unprotect.state == .on ? ["-u"] : []
             self.runJob("Erase \(name)", ["-p", name] + self.connectionArgs + unprot + ["-E"]) { [weak self] ok, output in
                 guard let self = self, !ok else { return }
-                if Self.eraseUnsupported(output) {
+                if Self.eraseUnsupported(output), self.chipDetails?.kind == .memory, !Self.isUVEPROM(name) {
                     self.log("\(name) has no erase command – filling it with FF instead.")
                     self.eraseByFilling(name)
                 }
