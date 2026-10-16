@@ -199,14 +199,10 @@ DIAG=""
 diag() { DIAG+="### $1"$'\n'"$2"$'\n\n'; }
 M="$WORK/src/minipro-git/src/main.c"
 X="$APP/Contents/Resources/minipro/infoic.xml"
-diag "main.c read_fuses..write_fuses" "$(sed -n '/^int read_fuses/,/^int write_fuses/p' "$M" | head -170)"
-diag "main.c get_config_value" "$(sed -n '/^int get_config_value/,/^}/p' "$M" | head -50)"
-diag "main.c write_fuses" "$(sed -n '/^int write_fuses/,/^}/p' "$M" | head -140)"
-L="$(grep -n '<configurations' "$X" | head -1 | cut -d: -f1)"
-diag "infoic configurations sample" "$(sed -n "${L},$((L+70))p" "$X" | tr -s ' ')"
-diag "infoic config attribute on ic" "$(grep -n -E 'config="[^"]+"' "$X" | head -5 | tr -s ' ')"
-diag "ic entries with config" "$(grep -n -B14 -m3 -E '^[[:space:]]*config="' "$X" | tr -s ' ' | head -60)"
-for q in ATMEGA8 ATTINY2313 PIC16F84 AT89C2051; do diag "-L $q" "$("$APP/Contents/MacOS/minipro" "${DBARGS[@]}" -q TL866A -L $q 2>&1 | grep -v overridden | head -8)"; done
+D="$WORK/src/minipro-git/src/database.c"
+diag "database.c num_uids" "$(grep -n -B6 -A6 -E 'num_uids|uid' "$D" | head -120)"
+diag "database.c flag masks" "$(grep -n -E '#define MP_[A-Z_]+[[:space:]]+0x' "$D" | head -40)"
+diag "PIC16F84A ic entry" "$(grep -n -A22 'name="PIC16F84A' "$X" | head -24 | tr -s ' ')"
 printf '%s' "$DIAG" > "$ROOT/diag.txt"
 
 # ---------- sign and package ----------
