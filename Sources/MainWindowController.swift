@@ -550,6 +550,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     }
 
     private func updateBufferLabel() {
+        defer { bufferLabel.toolTip = bufferLabel.stringValue }   // full text when it is cut short
         let edited = bufferEdited ? " (edited)" : ""
         if buffer.isEmpty && !bufferIsText {
             bufferLabel.stringValue = "Buffer: empty – open a file, read a chip or use New Buffer…"
