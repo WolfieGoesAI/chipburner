@@ -36,6 +36,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     private let allowSize = NSButton(checkboxWithTitle: "Allow file size mismatch", target: nil, action: nil)
     private let skipErase = NSButton(checkboxWithTitle: "Don't erase before programming", target: nil, action: nil)
     private let skipVerify = NSButton(checkboxWithTitle: "Don't verify after programming", target: nil, action: nil)
+    private let unprotect = NSButton(checkboxWithTitle: "Unprotect before writing", target: nil, action: nil)
+    private let protectAfter = NSButton(checkboxWithTitle: "Protect after writing", target: nil, action: nil)
 
     /// Memory types minipro selects with -c. Titles shown in the popup, argument passed to minipro.
     private let memoryTypes: [(title: String, arg: String?)] = [
@@ -156,8 +158,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         memoryPopup.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         let memLabel = NSTextField(labelWithString: "Memory:")
         memLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        [skipID, allowSize, skipErase, skipVerify].forEach { $0.controlSize = .small; $0.font = .systemFont(ofSize: NSFont.smallSystemFontSize) }
+        [skipID, allowSize, skipErase, skipVerify, unprotect, protectAfter].forEach { $0.controlSize = .small; $0.font = .systemFont(ofSize: NSFont.smallSystemFontSize) }
+        unprotect.toolTip = "Turns off write protection (such as the software data protection of 28C256 EEPROMs) before writing or erasing (minipro -u)."
+        protectAfter.toolTip = "Turns write protection on again after writing (minipro -P)."
+        unprotect.state = UserDefaults.standard.bool(forKey: "unprotect") ? .on : .off
+        protectAfter.state = UserDefaults.standard.bool(forKey: "protectAfter") ? .on : .off
+        unprotect.target = self; unprotect.action = #selector(protectionChanged(_:))
+        protectAfter.target = self; protectAfter.action = #selector(protectionChanged(_:))
         let optionsRow = row([memLabel, memoryPopup, skipID, allowSize, skipErase, skipVerify, spacer()])
+        let protectRow = row([unprotect, protectAfter, spacer()])
 
         ["ZIF socket", "ICSP – power from programmer", "ICSP – board has its own power"].forEach { connectionPopup.addItem(withTitle: $0) }
         connectionPopup.controlSize = .small
@@ -176,6 +185,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         bufferLabel.isSelectable = true
         let fileRow = row([bufferLabel, spacer(),
                            button("Open…", #selector(openFile(_:))),
+                           button("JED → Equations…", #selector(decodeJED(_:))),
                            button("Save .bin…", #selector(saveBinary(_:))),
                            button("Save .hex…", #selector(saveIntelHex(_:)))])
 
@@ -192,12 +202,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         let logButton = button("Log", #selector(toggleLog(_:)))
         let statusRow = row([statusLabel, spacer(), progress, logButton])
 
-        let rows: [NSView] = [progRow, chipRow, chipInfoLabel, actionRow, optionsRow, connectionRow, fileRow, bufferView, statusRow]
+        let rows: [NSView] = [progRow, chipRow, chipInfoLabel, actionRow, optionsRow, protectRow, connectionRow, fileRow, bufferView, statusRow]
         let stack = NSStackView(views: rows)
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
         stack.setCustomSpacing(4, after: chipRow)
+        stack.setCustomSpacing(4, after: optionsRow)
         stack.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 12, right: 16)
         stack.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(stack)
@@ -496,7 +507,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             if skipErase.state == .on { a.append("-e") }
             if skipVerify.state == .on { a.append("-v") }
         }
-        return a
+        return a + protectionArgs(kind)
+    }
+
+    private func protectionArgs(_ kind: JobKind) -> [String] {
+        guard kind == .write else { return [] }
+        return (unprotect.state == .on ? ["-u"] : []) + (protectAfter.state == .on ? ["-P"] : [])
+    }
+
+    @objc private func protectionChanged(_ sender: Any?) {
+        UserDefaults.standard.set(unprotect.state == .on, forKey: "unprotect")
+        UserDefaults.standard.set(protectAfter.state == .on, forKey: "protectAfter")
     }
 
     /// What the selected chip and memory area exchange: minipro's -c argument, text or binary, file extension.
@@ -606,17 +627,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     /// Reads the electronic ID with a reference algorithm, then lists every database chip with that ID.
     @objc func identifyChip(_ sender: Any?) {
         guard let w = window, !isBusy else { return }
+        if !chip.isEmpty, Self.isEEPROM(chip) {
+            showError("Identify can't be used with \(chip).",
+                      "Identify reads the ID the EPROM way, with about 12 V on pin A9. EEPROMs such as the 28C256 aren't made for that and can be damaged. Their ID isn't needed: choose the chip with Search, and use Skip chip ID check if it has no ID in the database.")
+            return
+        }
         guard ChipDatabase.shared.isLoaded else { showError("The chip database is still loading.", "Try again in a moment."); return }
         var refs: [(String, String)] = [
             ("28-pin UV EPROM (27C64 to 27C512)", "AM27C256@DIP28"),
             ("32-pin UV EPROM (27C010 to 27C080)", "AM27C010@DIP32"),
         ]
-        if !chip.isEmpty, chipDetails != nil { refs.append(("Same type as \(chip)", chip)) }
+        if !chip.isEmpty, chipDetails != nil, Self.isUVEPROM(chip) || chip.uppercased().hasPrefix("W27") { refs.append(("Same type as \(chip)", chip)) }
         let popup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 320, height: 26), pullsDown: false)
         refs.forEach { popup.addItem(withTitle: $0.0) }
         let a = NSAlert()
         a.messageText = "Identify chip"
-        a.informativeText = "Put the chip in the socket (bottom-aligned, pin 1 at the lever end) and choose what kind of chip it is. ChipBurner reads its electronic ID and lists the chips that match. Old NMOS parts such as 2716 and 2732 have no ID."
+        a.informativeText = "Put the chip in the socket (bottom-aligned, pin 1 at the lever end) and choose what kind of chip it is. ChipBurner reads its electronic ID and lists the chips that match. Old NMOS parts such as 2716 and 2732 have no ID.\n\nOnly for EPROMs: the ID read puts about 12 V on pin A9. Don't use it with EEPROMs such as the 28C256."
         a.accessoryView = popup
         a.addButton(withTitle: "Read ID")
         a.addButton(withTitle: "Cancel")
@@ -704,14 +730,78 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
 
     @objc func eraseChip(_ sender: Any?) {
         guard requireChip(), connectionAllowed(), let w = window else { return }
+        if Self.isUVEPROM(chip) {
+            showError("\(chip) is a UV EPROM.", "It can only be erased with UV light (an EPROM eraser, typically 10–20 minutes). Use Blank Check afterwards.")
+            return
+        }
         let a = NSAlert()
         a.messageText = "Erase \(chip)?"
-        a.informativeText = "This works for flash, EEPROM, GAL and microcontroller chips. UV EPROMs (27Cxxx) can only be erased with UV light."
+        a.informativeText = "Chips with an erase command are erased directly. Chips without one, such as 28C256-type EEPROMs, are filled with FF (their blank state) by programming and verifying – only if they aren't blank already."
+            + (unprotect.state == .on ? "\n\nWrite protection is turned off first." : "")
         a.addButton(withTitle: "Erase")
         a.addButton(withTitle: "Cancel")
         a.beginSheetModal(for: w) { [weak self] resp in
             guard let self = self, resp == .alertFirstButtonReturn else { return }
-            self.runJob("Erase \(self.chip)", ["-p", self.chip] + self.connectionArgs + ["-E"])
+            let name = self.chip
+            let unprot = self.unprotect.state == .on ? ["-u"] : []
+            self.runJob("Erase \(name)", ["-p", name] + self.connectionArgs + unprot + ["-E"]) { [weak self] ok, output in
+                guard let self = self, !ok else { return }
+                if Self.eraseUnsupported(output) {
+                    self.log("\(name) has no erase command – filling it with FF instead.")
+                    self.eraseByFilling(name)
+                }
+            }
+        }
+    }
+
+    /// minipro refuses -E for chips whose database entry has no erase support.
+    static func eraseUnsupported(_ output: String) -> Bool {
+        let l = output.lowercased()
+        guard l.contains("erase") else { return false }
+        return ["can't", "can not", "cannot", "not supported", "unsupported", "doesn't support", "does not support", "not erasable"].contains { l.contains($0) }
+    }
+
+    /// Names like AM27C256, M27C512, 2764, D27128 (UV EPROMs that need 12 V and UV erase).
+    static func isUVEPROM(_ name: String) -> Bool {
+        let n = name.uppercased()
+        if n.range(of: "27(SF|EE|LV0|BV)", options: .regularExpression) != nil { return false } // electrically erasable 27-series
+        if n.hasPrefix("W27") { return false }                                                    // Winbond W27C: electrically erasable
+        return n.range(of: "^[A-Z]{0,4}27C?[0-9]{2,4}", options: .regularExpression) != nil
+    }
+
+    /// Parallel EEPROMs (28C64, X28C256, AT28C256 …) – Identify must not be used on them.
+    static func isEEPROM(_ name: String) -> Bool {
+        name.uppercased().range(of: "^[A-Z]{0,4}28(C|HC|LV|F)?[0-9]{2,4}", options: .regularExpression) != nil
+    }
+
+    /// Erase for chips without an erase command: skip if blank, otherwise program all FF and verify.
+    /// FF is the erased state of EEPROM and flash, and what Blank Check expects. Every byte write
+    /// costs one internal erase/write cycle whatever the value, so the wear-saving step is to skip
+    /// the write altogether when the chip is already blank.
+    private func eraseByFilling(_ name: String) {
+        guard let info = ChipDatabase.shared.info(for: name, programmer: Minipro.shared.programmerType), info.codeSize > 0 else {
+            showError("Can't erase \(name).", "The chip has no erase command, and its size isn't known, so it can't be filled with FF.")
+            return
+        }
+        runJob("Blank check \(name)", ["-p", name] + connectionArgs + ["-b"]) { [weak self] blank, _ in
+            guard let self = self else { return }
+            if blank {
+                self.showInfo("\(name) is already blank", "Every byte already reads FF, so nothing was written.")
+                return
+            }
+            let url = self.tempURL("erase-fill.bin")
+            do { try Data(repeating: 0xFF, count: info.codeSize).write(to: url) } catch {
+                self.showError("Could not write a temporary file.", error.localizedDescription)
+                return
+            }
+            var args = ["-p", name] + self.connectionArgs + ["-w", url.path, "-e"]
+            if self.unprotect.state == .on { args.append("-u") }
+            if self.protectAfter.state == .on { args.append("-P") }
+            self.runJob("Fill \(name) with FF", args) { [weak self] ok, _ in
+                guard let self = self else { return }
+                if ok { self.showInfo("\(name) erased", "All \(info.codeSize) bytes were written with FF and verified.") }
+                else { self.showError("Filling \(name) with FF failed.", "If the chip is write-protected, tick “Unprotect before writing” and try again. Details are in the log.") }
+            }
         }
     }
 
@@ -883,6 +973,28 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             } catch {
                 self.showError("Could not open \(url.lastPathComponent).", error.localizedDescription)
             }
+        }
+    }
+
+    /// Decodes the .jed in the buffer (or a chosen .jed file) into equations and a gate diagram.
+    @objc func decodeJED(_ sender: Any?) {
+        guard let w = window else { return }
+        let hint = chip.isEmpty ? nil : chip
+        if bufferIsText && bufferExt == "jed" && !buffer.isEmpty {
+            GalDecoderWindowController.show(jedText: String(decoding: buffer, as: UTF8.self),
+                                            sourceName: bufferName, chipHint: hint, on: w)
+            return
+        }
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.allowedFileTypes = ["jed", "JED"]
+        panel.message = "Choose a JEDEC fuse map (.jed) for a GAL16V8, GAL20V8 or GAL22V10."
+        panel.beginSheetModal(for: w) { resp in
+            guard resp == .OK, let url = panel.url else { return }
+            guard let data = try? Data(contentsOf: url) else { return }
+            GalDecoderWindowController.show(jedText: String(decoding: data, as: UTF8.self),
+                                            sourceName: url.lastPathComponent, chipHint: hint, on: w)
         }
     }
 

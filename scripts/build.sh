@@ -153,7 +153,7 @@ MANFILE="$(find "$WORK/src/minipro-git" -name 'minipro.1' -print -quit)"
 MANTXT="$( (mandoc -T ascii "$MANFILE" 2>/dev/null || groff -man -Tascii "$MANFILE" 2>/dev/null || cat "$MANFILE") | col -b | sed 's/\\-/-/g')"
 missing=0
 OPTDOC=""
-for opt in -q -k -L -d -p -r -w -m -b -E -x -y -s -e -v -c -D -T -i -I --infoic --logicic; do
+for opt in -q -k -L -d -p -r -w -m -b -E -x -y -s -e -v -c -D -T -i -I -u -P --infoic --logicic; do
   lines="$(grep -E -A2 "^[[:space:]]*(-[A-Za-z], )?$opt([,[:space:]]|$)" <<<"$MANTXT" | head -3 | tr -s ' ' || true)"
   if [ -z "$lines" ]; then echo "MISSING OPTION: $opt"; missing=1; else OPTDOC+="$lines"$'\n'; fi
 done
@@ -187,6 +187,20 @@ DBT="$("$WORK/dbtest" "$APP/Contents/Resources/minipro/infoic.xml" "$APP/Content
 echo "$DBT"
 NOTE="${DBT//'%'/'%25'}"; NOTE="${NOTE//$'\n'/'%0A'}"
 echo "::notice title=Database reader test::$NOTE"
+
+log "Test: JED decoder against Galette's assembled test cases"
+xcrun swiftc -O -sdk "$SDK" "$ROOT/Sources/GalDecoder.swift" "$ROOT/tests/galtest/main.swift" -o "$WORK/galtest"
+GT="$("$WORK/galtest" "$ROOT/tests/gal/cases" 2>&1)" || { echo "$GT"; note "JED decoder test FAILED" "$(tail -60 <<<"$GT")"; false; }
+echo "$GT"
+note "JED decoder test" "$(grep -v '^;' <<<"$GT" | tail -40)"
+
+log "Diagnostics: EEPROM entries and erase handling"
+note "infoic.xml entries" "$(grep -i -E 'name="(X28C256|AT28C256|W27C512|AM27C256|GAL16V8)[^"]*"' "$APP/Contents/Resources/minipro/infoic.xml" | head -12 | cut -c1-400)"
+note "minipro source: erase handling" "$(grep -rn -i -E 'can.?t be erased|erase.*not|can_erase|ERASE' "$WORK/src/minipro-git/src" 2>/dev/null | grep -v -i 'unprotect' | head -30 | cut -c1-220)"
+note "minipro source: device flags" "$(grep -rn -E 'flags\.|#define [A-Z_]+ +0x[0-9a-fA-F]+' "$WORK/src/minipro-git/src/database.h" 2>/dev/null | head -40 | cut -c1-160)"
+note "minipro -d X28C256" "$("$APP/Contents/MacOS/minipro" "${DBARGS[@]}" -q TL866A -d X28C256 2>&1 | head -20)"
+note "minipro -L X28C256" "$("$APP/Contents/MacOS/minipro" "${DBARGS[@]}" -q TL866A -L X28C256 2>&1 | head -10)"
+note "minipro -u/-P manual" "$(grep -E -A3 '^[[:space:]]*-[uP],' <<<"$MANTXT" | tr -s ' ')"
 
 # ---------- sign and package ----------
 log "Ad-hoc signing"
