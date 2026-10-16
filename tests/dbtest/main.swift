@@ -68,6 +68,14 @@ expect(gal.vpp == "16V" && gal.vdd == nil, "GAL16V8 -d: VPP 16 V only")
 var ov = VoltageOverrides(); ov.vpp = "12.5"; ov.pulse = "50"
 expect(ov.args == ["-o", "vpp=12.5", "-o", "pulse=50"], "voltage overrides become -o vpp=12.5 -o pulse=50")
 
+for n in ["X28C256", "AT28C256", "W27C512@DIP28", "AM27C256@DIP28", "GAL16V8", "SST39SF010A"] {
+    if let i = db.info(for: n, programmer: "TL866A") {
+        print("  \(n): flags " + String(format: "0x%08X", i.flags) + " canErase \(i.canErase.map { "\($0)" } ?? "unknown")")
+    }
+}
+expect(db.info(for: "GAL16V8", programmer: "TL866A")?.canErase == true, "GAL16V8 has an erase command")
+expect(db.info(for: "AM27C256@DIP28", programmer: "TL866A")?.canErase == false, "AM27C256 (UV EPROM) has no erase command")
+
 let plds = db.names(of: .pld, programmer: "TL866A")
 print("  PLDs for TL866A (\(plds.count)): \(plds.joined(separator: " "))")
 

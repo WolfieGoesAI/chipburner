@@ -27,6 +27,10 @@ struct ChipInfo {
     let dataSize: Int
     let database: String   // e.g. INFOIC, INFOIC2PLUS, LOGIC
     let pins: Int          // logic chips only
+    var flags: UInt32 = 0  // minipro device flags (bit 0x10 = chip has an erase command)
+    var hasFlags = false
+    /// nil when the database entry carries no flags.
+    var canErase: Bool? { hasFlags ? (flags & 0x10) != 0 : nil }
     // Logic chips only:
     var group: String = ""        // names sharing the same test vectors, e.g. "7400,7437,74132"
     var voltage: String = ""      // test supply, e.g. "5V"
@@ -199,11 +203,16 @@ final class ChipDatabase {
                 let code = Int(hex(attr["code_memory_size"]))
                 let data = Int(hex(attr["data_memory_size"]))
                 let pins = Int(attr["pins"] ?? "") ?? 0
+                let flagText = attr["flags"]
+                let flags = hex(flagText)
                 for n in names.split(separator: ",") {
                     let name = n.trimmingCharacters(in: .whitespaces)
                     if name.isEmpty { continue }
-                    entries.append(ChipInfo(name: name, kind: database == "LOGIC" ? .logic : kind, chipID: id,
-                                            codeSize: code, dataSize: data, database: database, pins: pins))
+                    var info = ChipInfo(name: name, kind: database == "LOGIC" ? .logic : kind, chipID: id,
+                                        codeSize: code, dataSize: data, database: database, pins: pins)
+                    info.flags = flags
+                    info.hasFlags = flagText != nil
+                    entries.append(info)
                 }
             default: break
             }

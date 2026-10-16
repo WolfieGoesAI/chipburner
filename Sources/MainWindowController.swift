@@ -743,6 +743,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         a.beginSheetModal(for: w) { [weak self] resp in
             guard let self = self, resp == .alertFirstButtonReturn else { return }
             let name = self.chip
+            if self.chipDetails?.canErase == false {
+                self.log("\(name) has no erase command in the database – filling it with FF instead.")
+                self.eraseByFilling(name)
+                return
+            }
             let unprot = self.unprotect.state == .on ? ["-u"] : []
             self.runJob("Erase \(name)", ["-p", name] + self.connectionArgs + unprot + ["-E"]) { [weak self] ok, output in
                 guard let self = self, !ok else { return }
