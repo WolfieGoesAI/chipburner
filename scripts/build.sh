@@ -134,6 +134,7 @@ log "Assembling $APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/minipro"
 cp "$WORK/ChipBurner" "$WORK/minipro" "$APP/Contents/MacOS/"
 cp "$INFOIC" "$APP/Contents/Resources/minipro/"
+cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 [ -n "${LOGICIC:-}" ] && cp "$LOGICIC" "$APP/Contents/Resources/minipro/"
 cp "$WORK/src/minipro-git/LICENSE"* "$APP/Contents/Resources/minipro/" 2>/dev/null || true
 cat > "$APP/Contents/Resources/minipro/SOURCE.txt" <<EOF
@@ -164,6 +165,9 @@ echo "::notice title=minipro options used by ChipBurner::$NOTE"
 PROGDOC="$(grep -E -i -B1 -A3 'programmer|tl866a' <<<"$MANTXT" | head -40 | tr -s ' ')"
 NOTE="${PROGDOC//'%'/'%25'}"; NOTE="${NOTE//$'\n'/'%0A'}"
 echo "::notice title=minipro programmer selection::$NOTE"
+
+note() { local t="$1" b="$2"; b="${b//'%'/'%25'}"; b="${b//$'\n'/'%0A'}"; echo "::notice title=$t::$b"; }
+note "minipro: all options" "$(grep -E '^[[:space:]]*(-[A-Za-z][, ]|--[a-z])' <<<"$MANTXT" | sed -E 's/^[[:space:]]+//' | tr -s ' ' | head -80)"
 
 log "Smoke test: chip database search for 27C256"
 DBARGS=(--infoic "$APP/Contents/Resources/minipro/infoic.xml")
