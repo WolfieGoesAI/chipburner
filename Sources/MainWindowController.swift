@@ -441,12 +441,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             let idText = String(format: "0x%04X", id)
             var matches = ChipDatabase.shared.chips(withID: id, programmer: programmer, packageSuffix: refInfo.packageSuffix)
             if matches.isEmpty { matches = ChipDatabase.shared.chips(withID: id, programmer: programmer, packageSuffix: nil) }
-            self.log("Chip ID \(idText): \(matches.count) matching chip(s) in the database.")
+            self.log("Chip ID \(idText): \(Set(matches.map { $0.name.uppercased() }).count) matching chip(s) in the database.")
             guard !matches.isEmpty else {
                 self.showInfo("Chip ID \(idText) read", "No chip in the \(programmer) database has this ID. The maker code is 0x\(String(format: "%02X", (id >> 8) & 0xFF)).")
                 return
             }
-            let names = matches.map { $0.name }
+            var seen = Set<String>()
+            let names = matches.map { $0.name }.filter { seen.insert($0.uppercased()).inserted }
             let picker = ChipSearchController(title: "Chips with ID \(idText)", results: names) { [weak self] name in
                 guard let self = self, let name = name else { return }
                 self.selectChip(name)
