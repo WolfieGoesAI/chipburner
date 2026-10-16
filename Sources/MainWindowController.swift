@@ -1341,6 +1341,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             if let r = buttons[t] { print(String(format: "SMOKE %@ x=%.0f..%.0f y=%.0f..%.0f", t, r.minX, r.maxX, r.minY, r.maxY)) }
             else { print("SMOKE missing button: \(t)") }
         }
+        if let stack = content.subviews.first as? NSStackView {
+            for (i, v) in stack.views.enumerated() {
+                print(String(format: "SMOKE row %d %@ fitting width %.0f", i, String(describing: type(of: v)), v.fittingSize.width))
+                if let st = v as? NSStackView {
+                    for sv in st.views { print(String(format: "SMOKE    %@ %.0f", (sv as? NSButton)?.title ?? (sv as? NSTextField)?.stringValue ?? String(describing: type(of: sv)), sv.fittingSize.width)) }
+                }
+            }
+        }
         let ok = w.isVisible && buttons.count > 20 && !content.subviews.isEmpty
         print(ok ? "SMOKE OK" : "SMOKE FAIL")
         return ok
