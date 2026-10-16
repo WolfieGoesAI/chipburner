@@ -171,6 +171,11 @@ note "minipro: all options" "$(grep -E '^[[:space:]]*(-[A-Za-z][, ]|--[a-z])' <<
 
 note "minipro: pin check" "$(grep -E -i -B1 -A8 '(-z, --pin_check|pin.?check|pin.?detect|bad contact)' <<<"$MANTXT" | head -50 | tr -s ' ')"
 
+note "minipro: voltage options" "$(grep -E -A12 '^[[:space:]]*-o <option>' <<<"$MANTXT" | head -70 | tr -s ' ')"
+for c in 'ATMEGA328P@DIP28' 'AM27C256@DIP28' 'GAL16V8' 'PIC16F84A' 'W27C512@DIP28'; do
+  note "minipro -d $c" "$("$APP/Contents/MacOS/minipro" --infoic "$APP/Contents/Resources/minipro/infoic.xml" -q TL866A -d "$c" 2>&1 | grep -v 'overridden database' | head -30)"
+done
+
 log "Smoke test: chip database search for 27C256"
 DBARGS=(--infoic "$APP/Contents/Resources/minipro/infoic.xml")
 [ -f "$APP/Contents/Resources/minipro/logicic.xml" ] && DBARGS+=(--logicic "$APP/Contents/Resources/minipro/logicic.xml")
