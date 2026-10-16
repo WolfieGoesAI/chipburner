@@ -207,6 +207,8 @@ if [ -d "$WORK/mp-history" ]; then
 fi
 diag "infoic.xml header" "$(head -c 1500 "$APP/Contents/Resources/minipro/infoic.xml")"
 diag "infoic.xml path in source" "$(cd "$WORK/src/minipro-git" && find . -name 'infoic.xml' -o -name 'logicic.xml')"
+diag "hardware_check per programmer" "$(grep -n -E 'case MP_|hardware_check' "$WORK/src/minipro-git/src/minipro.c" | head -30)"
+diag "tl866a hardware check" "$(grep -n -A3 -E 'hardware_check' "$WORK/src/minipro-git/src/tl866a.c" | head -20)"
 diag "Fuses & Locks families" "$(grep -E '^(FL|FUSES)' <<<"$DBT")"
 printf '%s' "$DIAG" > "$ROOT/diag.txt"
 
