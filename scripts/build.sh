@@ -196,7 +196,11 @@ DBT="$("$WORK/dbtest" "$APP/Contents/Resources/minipro/infoic.xml" "$APP/Content
     echo "### ATMEGA8A in infoic"; grep -n -i -B3 -A22 'ATMEGA8A' "$X" | head -60 | tr -s ' '
     echo "### PIC16F84A in infoic"; grep -n -i -B3 -A5 'PIC16F84A' "$X" | head -30 | tr -s ' '
     echo "### database sections"; grep -n -E '<database|type="INFOIC' "$X" | head
-    echo "### minipro -d ATMEGA8A"; "$APP/Contents/MacOS/minipro" --infoic "$X" -q TL866A -d ATMEGA8A 2>&1 | head -20
+    echo "### avr_15 definition"; grep -n -B4 -A30 'name="avr_15"' "$X" | head -50 | tr -s ' '
+    echo "### pic_23 definition"; grep -n -B2 -A30 'name="pic_23"' "$X" | head -40 | tr -s ' '
+    echo "### configurations tags"; grep -n -E '<configurations|</configurations|<database|</database' "$X" | head -20
+    echo "### other xml in source"; (cd "$WORK/src/minipro-git" && find . -name '*.xml' | head)
+    echo "### minipro -d ATMEGA8A@DIP28"; "$APP/Contents/MacOS/minipro" --infoic "$X" --logicic "$APP/Contents/Resources/minipro/logicic.xml" -q TL866A -d ATMEGA8A@DIP28 2>&1 | head -20
     echo "### minipro -L ATMEGA8"; "$APP/Contents/MacOS/minipro" --infoic "$X" -q TL866A -L ATMEGA8 2>&1 | head -10
   } > "$ROOT/diag.txt"
   false
