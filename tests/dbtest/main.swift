@@ -139,6 +139,13 @@ expect(BufferOps.fill(count: 5, pattern: [0x55, 0xAA]) == Data([0x55, 0xAA, 0x55
 let cs = BufferOps.checksums(Data("123456789".utf8))
 expect(cs.crc32 == 0xCBF43926 && cs.sum16 == 0x01DD && cs.sum8 == 0xDD && cs.twosComplement8 == 0x23 && cs.xor8 == 0x31, "checksums of \"123456789\" (CRC-32 check value CBF43926)")
 
+let srams = db.names(of: .sram, programmer: "TL866A")
+print("SRAM TL866A: \(srams.count): \(srams.prefix(60).joined(separator: " "))")
+let logicAll = db.names(of: .logic, programmer: "TL866A")
+let dramish = logicAll.filter { $0.range(of: "^(41|44|TMS4|MK4|HM50|KM41|MB81|D41|UPD41|4164|41256)", options: .regularExpression) != nil }
+print("DRAMLOGIC: \(dramish.count): \(dramish.prefix(40).joined(separator: " "))")
+let notTTL = logicAll.filter { $0.range(of: "^(74|54|40|45|CD4|HEF|MC14)", options: .regularExpression) == nil }
+print("LOGICNAMES non-74/4000 (\(notTTL.count)): \(notTTL.prefix(80).joined(separator: " "))")
 let plds = db.names(of: .pld, programmer: "TL866A")
 print("  PLDs for TL866A (\(plds.count)): \(plds.joined(separator: " "))")
 

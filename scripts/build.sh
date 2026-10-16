@@ -6,7 +6,7 @@
 #
 # Environment overrides:
 #   APP_VERSION     version string (default 0.1.0)
-#   MINIPRO_REF     minipro git tag/branch (default 0.7.4, falls back to master)
+#   MINIPRO_REF     minipro git tag/branch, or "main" for the default (development) branch (default: main)
 #   LIBUSB_VERSION  libusb release (default 1.0.27)
 set -euo pipefail
 
@@ -15,7 +15,7 @@ WORK="$ROOT/build"
 DIST="$ROOT/dist"
 APP_VERSION="${APP_VERSION:-0.1.0}"
 BUILD_NUMBER="${BUILD_NUMBER:-1}"
-MINIPRO_REF="${MINIPRO_REF:-0.7.4}"
+MINIPRO_REF="${MINIPRO_REF:-main}"
 LIBUSB_VERSION="${LIBUSB_VERSION:-1.0.27}"
 ARCHS=(x86_64 arm64)
 
@@ -66,11 +66,14 @@ curl -fsSL "https://github.com/libusb/libusb/releases/download/v$LIBUSB_VERSION/
   -o "$WORK/src/libusb.tar.bz2"
 
 log "Fetching minipro ($MINIPRO_REF)"
-if ! git clone --depth 1 --branch "$MINIPRO_REF" https://gitlab.com/DavidGriffith/minipro.git "$WORK/src/minipro-git"; then
-  echo "Tag $MINIPRO_REF not found, using master"
-  git clone --depth 1 https://gitlab.com/DavidGriffith/minipro.git "$WORK/src/minipro-git"
+if [ "$MINIPRO_REF" = "main" ]; then
+  git clone --depth 50 https://gitlab.com/DavidGriffith/minipro.git "$WORK/src/minipro-git"
+elif ! git clone --depth 1 --branch "$MINIPRO_REF" https://gitlab.com/DavidGriffith/minipro.git "$WORK/src/minipro-git"; then
+  echo "Tag $MINIPRO_REF not found, using the default branch"
+  git clone --depth 50 https://gitlab.com/DavidGriffith/minipro.git "$WORK/src/minipro-git"
 fi
-MINIPRO_DESC="$(git -C "$WORK/src/minipro-git" describe --tags --always 2>/dev/null || echo unknown)"
+git -C "$WORK/src/minipro-git" fetch -q --depth 1 origin 'refs/tags/0.7.4:refs/tags/0.7.4' 2>/dev/null || true
+MINIPRO_DESC="$(git -C "$WORK/src/minipro-git" describe --tags --always 2>/dev/null || echo unknown) ($(git -C "$WORK/src/minipro-git" log -1 --format=%cs))"
 echo "minipro source: $MINIPRO_DESC"
 
 # ---------- per-architecture builds ----------
@@ -197,6 +200,8 @@ note "JED decoder test" "$(grep -v '^;' <<<"$GT" | tail -40)"
 # Extra diagnostics: add diag "title" "text" lines here; the workflow prints them as notices.
 DIAG=""
 diag() { DIAG+="### $1"$'\n'"$2"$'\n\n'; }
+diag "minipro source" "$MINIPRO_DESC"$'\n'"$("$APP/Contents/MacOS/minipro" --version 2>&1 | head -5)"
+diag "Test-related chip types" "$(grep -E '^(SRAM|DRAMLOGIC|LOGICNAMES)' <<<"$DBT")"
 diag "Fuses & Locks families" "$(grep -E '^(FL|FUSES)' <<<"$DBT")"
 printf '%s' "$DIAG" > "$ROOT/diag.txt"
 

@@ -9,7 +9,7 @@ on:
     inputs:
       minipro_ref:
         description: minipro tag or branch
-        default: '0.7.4'
+        default: 'main'
 
 permissions:
   contents: write
@@ -27,7 +27,7 @@ jobs:
         env:
           APP_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('0.1.{0}', github.run_number) }}
           BUILD_NUMBER: ${{ github.run_number }}
-          MINIPRO_REF: ${{ github.event.inputs.minipro_ref || '0.7.4' }}
+          MINIPRO_REF: ${{ github.event.inputs.minipro_ref || 'main' }}
         run: |
           APP_VERSION="${APP_VERSION#v}" bash scripts/build.sh
 
