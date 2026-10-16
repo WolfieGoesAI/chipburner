@@ -172,9 +172,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         let verify = button("Verify", #selector(verifyChip(_:)))
         let erase = button("Erase", #selector(eraseChip(_:)))
         eraseButton = erase
+        let autoBurn = button("Auto Burn…", #selector(autoBurn(_:)))
         stopButton = button("Stop", #selector(stop(_:)))
-        actionButtons = [read, blank, program, verify, erase, logic, logicID]
-        let actionRow = row([read, blank, program, verify, erase, spacer(), stopButton])
+        actionButtons = [read, blank, program, verify, erase, autoBurn, logic, logicID]
+        let actionRow = row([read, blank, program, verify, erase, autoBurn, spacer(), stopButton])
 
         memoryTypes.forEach { memoryPopup.addItem(withTitle: $0.title) }
         ["ZIF socket", "ICSP – power from programmer", "ICSP – board has its own power"].forEach { connectionPopup.addItem(withTitle: $0) }
@@ -1259,6 +1260,133 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             } catch {
                 self.showError("Could not save.", error.localizedDescription)
             }
+        }
+    }
+
+    // MARK: Auto Burn
+
+    /// One-step sequence: (erase) → (blank check) → program → verify, optionally repeated chip after chip.
+    @objc func autoBurn(_ sender: Any?) {
+        guard requireChip(), connectionAllowed(), let w = window, !isBusy else { return }
+        if let k = chipDetails?.kind, k == .logic {
+            showError("\(chip) is a logic chip.", "Auto Burn programs memory, microcontrollers and PLDs. Use Logic Test for logic chips.")
+            return
+        }
+        let m = mode
+        guard writeBufferToTemp(for: m) != nil else { return }
+        let method = eraseMethod
+        let d = UserDefaults.standard
+        func box(_ title: String, _ key: String, _ def: Bool) -> NSButton {
+            let b = NSButton(checkboxWithTitle: title, target: nil, action: nil)
+            b.state = (d.object(forKey: key) as? Bool ?? def) ? .on : .off
+            return b
+        }
+        let erase = box("Erase", "auto.erase", true)
+        let methodKey: String
+        switch method { case .command: methodKey = "erasable"; case .fill: methodKey = "eeprom"; case .unavailable: methodKey = "other" }
+        // A written EEPROM is never blank, so the blank check defaults to off for those.
+        let blankKey = "auto.blank." + methodKey
+        let blank = box("Blank check", blankKey, method != .fill)
+        let verify = box("Verify after programming", "auto.verify", true)
+        let repeatBox = box("Ask for the next chip when done (several chips in a row)", "auto.repeat", false)
+        switch method {
+        case .command:
+            erase.title = "Erase with the chip's erase command"
+        case .fill:
+            erase.state = .off; erase.isEnabled = false
+            erase.title = "Erase (not needed: the chip erases each byte as it writes it)"
+        case .unavailable:
+            erase.state = .off; erase.isEnabled = false
+            erase.title = Self.isUVEPROM(chip) ? "Erase (UV EPROM: erase it with UV light beforehand)" : "Erase (not available for this chip)"
+        }
+        let stack = NSStackView(views: [erase, blank, verify, repeatBox])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 6
+        stack.frame.size = stack.fittingSize
+        let a = NSAlert()
+        a.messageText = "Auto Burn \(chip)"
+        a.informativeText = "Runs these steps in order and stops at the first one that fails. Program writes \(buffer.count) bytes from “\(bufferName)” to the \(m.label).\n\nVoltages: \(voltages.summary). Options: \(settingsLabel.stringValue)."
+        a.accessoryView = stack
+        a.addButton(withTitle: "Start")
+        a.addButton(withTitle: "Cancel")
+        a.beginSheetModal(for: w) { [weak self] resp in
+            guard let self = self, resp == .alertFirstButtonReturn else { return }
+            d.set(erase.state == .on, forKey: "auto.erase")
+            d.set(blank.state == .on, forKey: blankKey)
+            d.set(verify.state == .on, forKey: "auto.verify")
+            d.set(repeatBox.state == .on, forKey: "auto.repeat")
+            let steps = AutoBurnSteps(erase: erase.isEnabled && erase.state == .on, blank: blank.state == .on,
+                                      verify: verify.state == .on, repeating: repeatBox.state == .on)
+            self.autoBurnTally = (0, 0)
+            self.runAutoBurn(steps)
+        }
+    }
+
+    private struct AutoBurnSteps { let erase, blank, verify, repeating: Bool }
+    private var autoBurnTally = (passed: 0, failed: 0)
+
+    private func runAutoBurn(_ steps: AutoBurnSteps) {
+        let name = chip, m = mode
+        guard let file = writeBufferToTemp(for: m) else { return }
+        var common = ["-p", name] + connectionArgs
+        if skipID.state == .on { common.append("-y") }
+        let unprot = unprotect.state == .on ? ["-u"] : []
+        let n = autoBurnTally.passed + autoBurnTally.failed + 1
+        let tag = steps.repeating ? " (chip \(n))" : ""
+        log("▶︎ Auto Burn \(name)\(tag): " + [steps.erase ? "erase" : nil, steps.blank ? "blank check" : nil, "program",
+                                             steps.verify ? "verify" : nil].compactMap { $0 }.joined(separator: " → "))
+
+        func finish(_ ok: Bool, _ failedStep: String?) {
+            if ok { autoBurnTally.passed += 1 } else { autoBurnTally.failed += 1 }
+            let tally = steps.repeating ? "\n\nSo far: \(autoBurnTally.passed) good, \(autoBurnTally.failed) failed." : ""
+            let title = ok ? "\(name) burned\(tag)" : "Auto Burn stopped at \(failedStep ?? "a step")\(tag)"
+            let detail = ok ? String(format: "Programmed%@ %d bytes, sum 0x%04X, CRC32 0x%08X.", steps.verify ? " and verified" : "",
+                                     buffer.count, Checksums.sum16(buffer), Checksums.crc32(buffer))
+                            : "Press Log to see minipro's message."
+            log(ok ? "✓ Auto Burn\(tag) finished." : "✗ Auto Burn\(tag) stopped at \(failedStep ?? "?").")
+            guard let w = window else { return }
+            let a = NSAlert()
+            a.alertStyle = ok ? .informational : .warning
+            a.messageText = title
+            a.informativeText = detail + tally + (steps.repeating ? "\n\nPut the next chip in the socket to continue." : "")
+            if steps.repeating {
+                a.addButton(withTitle: "Burn Next Chip")
+                a.addButton(withTitle: "Done")
+            } else {
+                a.addButton(withTitle: "OK")
+            }
+            a.beginSheetModal(for: w) { [weak self] resp in
+                guard let self = self, steps.repeating, resp == .alertFirstButtonReturn else { return }
+                self.runAutoBurn(steps)
+            }
+        }
+
+        func program() {
+            var args = common + m.memArgs + ["-w", file.path] + voltages.args + unprot
+            if allowSize.state == .on { args.append("-s") }
+            if steps.erase || steps.blank { args.append("-e") }      // already erased / known blank
+            else if skipErase.state == .on { args.append("-e") }
+            if !steps.verify { args.append("-v") }                  // minipro verifies after writing unless told not to
+            if protectAfter.state == .on { args.append("-P") }
+            runJob("Auto Burn: program\(steps.verify ? " + verify" : "")\(tag)", args) { ok, _ in
+                finish(ok, ok ? nil : (steps.verify ? "program/verify" : "program"))
+            }
+        }
+
+        func blankCheck() {
+            guard steps.blank else { program(); return }
+            runJob("Auto Burn: blank check\(tag)", common + m.memArgs + ["-b"]) { ok, _ in
+                ok ? program() : finish(false, "blank check (the chip isn't blank)")
+            }
+        }
+
+        if steps.erase {
+            runJob("Auto Burn: erase\(tag)", common + unprot + ["-E"]) { ok, _ in
+                ok ? blankCheck() : finish(false, "erase")
+            }
+        } else {
+            blankCheck()
         }
     }
 

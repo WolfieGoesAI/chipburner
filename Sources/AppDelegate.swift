@@ -80,6 +80,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         chipMenu.addItem(withTitle: "Blank Check", action: #selector(MainWindowController.blankCheck(_:)), keyEquivalent: "b")
         chipMenu.addItem(withTitle: "Verify", action: #selector(MainWindowController.verifyChip(_:)), keyEquivalent: "")
         chipMenu.addItem(withTitle: "Program…", action: #selector(MainWindowController.programChip(_:)), keyEquivalent: "")
+        chipMenu.addItem(withTitle: "Erase…", action: #selector(MainWindowController.eraseChip(_:)), keyEquivalent: "")
+        chipMenu.addItem(withTitle: "Auto Burn…", action: #selector(MainWindowController.autoBurn(_:)), keyEquivalent: "B")
         chipMenu.addItem(withTitle: "Logic Test", action: #selector(MainWindowController.logicTest(_:)), keyEquivalent: "t")
         chipMenu.addItem(withTitle: "Ident Logic…", action: #selector(MainWindowController.identifyLogic(_:)), keyEquivalent: "")
         chipMenu.addItem(.separator())
