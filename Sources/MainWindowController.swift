@@ -72,9 +72,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         buildUI()
         // Start at the smallest size the layout allows (the size you get by dragging the corner
         // all the way in); that is also the minimum.
+        // Ask for a tiny window and let Auto Layout grow it to what the controls need.
         if let content = window.contentView {
+            window.setContentSize(NSSize(width: 200, height: 200))
             content.layoutSubtreeIfNeeded()
-            let smallest = content.fittingSize
+            window.layoutIfNeeded()
+            let smallest = content.frame.size
             window.contentMinSize = smallest
             window.setContentSize(smallest)
         }
