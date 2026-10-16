@@ -150,6 +150,13 @@ final class ChipDatabase {
         return out
     }
 
+    /// Names of all chips of one kind in a programmer's database section, sorted.
+    func names(of kind: ChipInfo.Kind, programmer: String) -> [String] {
+        lock.lock(); defer { lock.unlock() }
+        let db = databaseName(for: programmer)
+        return all.filter { $0.kind == kind && (db == nil || $0.database == db) }.map { $0.name }.sorted()
+    }
+
     /// Pin counts that occur among logic chips, smallest first.
     var logicPinCounts: [Int] {
         lock.lock(); defer { lock.unlock() }

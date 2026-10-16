@@ -172,8 +172,6 @@ echo "::notice title=minipro programmer selection::$NOTE"
 note() { local t="$1" b="$2"; b="${b//'%'/'%25'}"; b="${b//$'\n'/'%0A'}"; echo "::notice title=$t::$b"; }
 note "minipro: all options" "$(grep -E '^[[:space:]]*(-[A-Za-z][, ]|--[a-z])' <<<"$MANTXT" | sed -E 's/^[[:space:]]+//' | tr -s ' ' | head -80)"
 
-note "PLD chips in the TL866A database" "$(awk '/<database/{db=""} /type="INFOIC"/{db="A"} /type="INFOIC2PLUS"/{db="B"} db=="A" && /name=/{n=$0} db=="A" && /type="3"/{print n}' "$IC" | sed -E 's/.*name="([^"]*)".*/\1/' | tr ',' '\n' | sed 's/@.*//' | sort -u | tr '\n' ' ' | fold -w 200)"
-
 log "Smoke test: chip database search for 27C256"
 DBARGS=(--infoic "$APP/Contents/Resources/minipro/infoic.xml")
 [ -f "$APP/Contents/Resources/minipro/logicic.xml" ] && DBARGS+=(--logicic "$APP/Contents/Resources/minipro/logicic.xml")

@@ -68,5 +68,8 @@ expect(gal.vpp == "16V" && gal.vdd == nil, "GAL16V8 -d: VPP 16 V only")
 var ov = VoltageOverrides(); ov.vpp = "12.5"; ov.pulse = "50"
 expect(ov.args == ["-o", "vpp=12.5", "-o", "pulse=50"], "voltage overrides become -o vpp=12.5 -o pulse=50")
 
+let plds = db.names(of: .pld, programmer: "TL866A")
+print("  PLDs for TL866A (\(plds.count)): \(plds.joined(separator: " "))")
+
 print(failed ? "DBTEST FAILED" : "DBTEST OK")
 exit(failed ? 1 : 0)
