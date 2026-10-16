@@ -197,6 +197,16 @@ note "JED decoder test" "$(grep -v '^;' <<<"$GT" | tail -40)"
 # Extra diagnostics: add diag "title" "text" lines here; the workflow prints them as notices.
 DIAG=""
 diag() { DIAG+="### $1"$'\n'"$2"$'\n\n'; }
+( git clone -q --filter=blob:none --no-checkout https://gitlab.com/DavidGriffith/minipro.git "$WORK/mp-history" ) >/dev/null 2>&1 || true
+if [ -d "$WORK/mp-history" ]; then
+  diag "minipro tags" "$(git -C "$WORK/mp-history" for-each-ref --sort=-creatordate --format='%(creatordate:short) %(refname:short)' refs/tags | head -12)"
+  diag "minipro master head" "$(git -C "$WORK/mp-history" log -1 --format='%cs %h %s' origin/HEAD)"
+  diag "infoic.xml history" "$(git -C "$WORK/mp-history" log --format='%cs %h %s' -25 origin/HEAD -- infoic.xml '*/infoic.xml')"
+  diag "logicic.xml history" "$(git -C "$WORK/mp-history" log --format='%cs %h %s' -8 origin/HEAD -- logicic.xml '*/logicic.xml')"
+  diag "infoic.xml changes since 0.7.4" "$(git -C "$WORK/mp-history" log --oneline 0.7.4..origin/HEAD -- infoic.xml '*/infoic.xml' | wc -l) commits"
+fi
+diag "infoic.xml header" "$(head -c 1500 "$APP/Contents/Resources/minipro/infoic.xml")"
+diag "infoic.xml path in source" "$(cd "$WORK/src/minipro-git" && find . -name 'infoic.xml' -o -name 'logicic.xml')"
 diag "Fuses & Locks families" "$(grep -E '^(FL|FUSES)' <<<"$DBT")"
 printf '%s' "$DIAG" > "$ROOT/diag.txt"
 
