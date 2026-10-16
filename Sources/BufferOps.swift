@@ -109,9 +109,9 @@ enum BufferOps {
                 for j in 0..<m { if let b = pattern[j], p[i + j] != b { return false } }
                 return true
             }
-            let s = max(0, min(start, n - m))
-            for i in s...(n - m) where matches(i) { return i }
-            if s > 0 { for i in 0..<s where matches(i) { return i } }
+            let s = max(0, start)
+            if s <= n - m { for i in s...(n - m) where matches(i) { return i } }
+            for i in 0..<min(s, n - m + 1) where matches(i) { return i }   // wrap around
             return nil
         }
     }
