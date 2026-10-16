@@ -65,8 +65,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let hexItem = fileMenu.addItem(withTitle: "Save as Intel Hex…", action: #selector(MainWindowController.saveIntelHex(_:)), keyEquivalent: "s")
         hexItem.keyEquivalentModifierMask = [.command, .shift]
         fileMenu.addItem(.separator())
-        fileMenu.addItem(withTitle: "Decode JED to Equations…", action: #selector(MainWindowController.decodeJED(_:)), keyEquivalent: "e")
-        fileMenu.addItem(.separator())
         fileMenu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         fileItem.submenu = fileMenu
 
@@ -101,6 +99,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         chipMenu.addItem(.separator())
         chipMenu.addItem(withTitle: "Stop", action: #selector(MainWindowController.stop(_:)), keyEquivalent: ".")
         chipItem.submenu = chipMenu
+
+        let pldItem = NSMenuItem(); main.addItem(pldItem)
+        pldItem.submenu = MainWindowController.makePLDMenu()
 
         let bufItem = NSMenuItem(); main.addItem(bufItem)
         let bufMenu = NSMenu(title: "Buffer")

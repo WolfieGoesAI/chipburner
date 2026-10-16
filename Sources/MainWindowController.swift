@@ -240,7 +240,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         let saveHex = button("Save .hex…", #selector(saveIntelHex(_:)))
         let fileRow = row([bufferLabel, spacer(),
                            button("Open…", #selector(openFile(_:))),
-                           button("JED → Equations…", #selector(decodeJED(_:))),
+                           button("JED…", #selector(showPLDMenu(_:))),
                            button("Save .bin…", #selector(saveBinary(_:))),
                            saveHex])
 
@@ -1224,6 +1224,112 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
                 self.showError("Could not open \(url.lastPathComponent).", error.localizedDescription)
             }
         }
+    }
+
+    // MARK: PLD / GAL / JED
+
+    /// The JED… button's menu (also the PLD menu in the menu bar).
+    static func makePLDMenu() -> NSMenu {
+        let m = NSMenu(title: "PLD")
+        let newItem = NSMenuItem(title: "New PLD Source", action: nil, keyEquivalent: "")
+        let sub = NSMenu(title: "New PLD Source")
+        for chip in ["GAL16V8", "GAL20V8", "GAL22V10", "GAL20RA10"] {
+            let it = NSMenuItem(title: chip, action: #selector(newPLDSource(_:)), keyEquivalent: "")
+            it.representedObject = chip
+            sub.addItem(it)
+        }
+        newItem.submenu = sub
+        m.addItem(newItem)
+        m.addItem(withTitle: "Open PLD Source…", action: #selector(openPLDSource(_:)), keyEquivalent: "")
+        m.addItem(.separator())
+        m.addItem(withTitle: "Decode JED to Equations…", action: #selector(decodeJED(_:)), keyEquivalent: "e")
+        m.addItem(withTitle: "Open .jed into Buffer…", action: #selector(openJEDIntoBuffer(_:)), keyEquivalent: "")
+        m.addItem(withTitle: "Save Buffer as .jed…", action: #selector(saveBufferAsJED(_:)), keyEquivalent: "")
+        m.addItem(.separator())
+        m.addItem(withTitle: "Supported PLDs…", action: #selector(showSupportedPLDs(_:)), keyEquivalent: "")
+        return m
+    }
+
+    @objc func showPLDMenu(_ sender: NSButton) {
+        let m = Self.makePLDMenu()
+        m.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
+    }
+
+    @objc func newPLDSource(_ sender: NSMenuItem) {
+        let name = (sender.representedObject as? String) ?? "GAL16V8"
+        guard let chip = GalAssembler.Chip(rawValue: name) else { return }
+        openPLDEditor(source: GalAssembler.template(for: chip), url: nil)
+    }
+
+    @objc func openPLDSource(_ sender: Any?) {
+        guard let w = window else { return }
+        let panel = NSOpenPanel()
+        panel.allowedFileTypes = ["pld", "PLD", "txt"]
+        panel.message = "Choose a galasm-style PLD source file."
+        panel.beginSheetModal(for: w) { [weak self] resp in
+            guard let self = self, resp == .OK, let url = panel.url, let data = try? Data(contentsOf: url) else { return }
+            self.openPLDEditor(source: String(decoding: data, as: UTF8.self), url: url)
+        }
+    }
+
+    private func openPLDEditor(source: String, url: URL?) {
+        let ed = PLDEditorWindowController(source: source, fileURL: url)
+        ed.onLoadIntoBuffer = { [weak self] jed, name, chipType in
+            self?.loadJEDIntoBuffer(jed, name: name, chipType: chipType)
+        }
+        ed.showWindow(nil)
+    }
+
+    /// Puts an assembled or opened .jed into the buffer and selects a matching chip if none is chosen.
+    private func loadJEDIntoBuffer(_ jed: String, name: String, chipType: String?) {
+        buffer = Data(jed.utf8)
+        bufferIsText = true
+        bufferExt = "jed"
+        bufferName = name
+        updateBufferViews()
+        log("Loaded \(name) into the buffer.")
+        guard let type = chipType else { return }
+        let current = chip.uppercased()
+        let family = type.replacingOccurrences(of: "GAL", with: "")
+        if current.contains(family) { return }
+        if ChipDatabase.shared.info(for: type, programmer: Minipro.shared.programmerType) != nil {
+            selectChip(type)
+            log("Chip set to \(type) to match the fuse map; pick the exact variant (e.g. \(type)B or ATF\(family)B) with Search if needed.")
+        } else {
+            log("Note: \(type) isn't in the \(Minipro.shared.programmerType) database, so this programmer can't program it.")
+        }
+    }
+
+    @objc func openJEDIntoBuffer(_ sender: Any?) {
+        guard let w = window else { return }
+        let panel = NSOpenPanel()
+        panel.allowedFileTypes = ["jed", "JED"]
+        panel.beginSheetModal(for: w) { [weak self] resp in
+            guard let self = self, resp == .OK, let url = panel.url, let data = try? Data(contentsOf: url) else { return }
+            let text = String(decoding: data, as: UTF8.self)
+            let type = (try? JEDECFile.parse(text)).flatMap { j in GalDecoder.chipType(fuseCount: j.declaredCount ?? j.fuses.count) }?.rawValue
+            self.loadJEDIntoBuffer(text, name: url.lastPathComponent, chipType: type)
+        }
+    }
+
+    @objc func saveBufferAsJED(_ sender: Any?) {
+        guard bufferIsText && bufferExt == "jed" && !buffer.isEmpty else {
+            showError("The buffer doesn't hold a .jed fuse map.", "Read a GAL, open a .jed file, or assemble a PLD source first.")
+            return
+        }
+        save(asHex: false)
+    }
+
+    @objc func showSupportedPLDs(_ sender: Any?) {
+        let plds = ChipDatabase.shared.isLoaded ? ChipDatabase.shared.names(of: .pld, programmer: Minipro.shared.programmerType) : []
+        let programmable = plds.isEmpty ? "(chip database still loading)" : plds.filter { !$0.contains("@") }.joined(separator: ", ")
+        showInfo("PLDs, GALs and .jed files", """
+            Assembler and decoder: GAL16V8, GAL20V8, GAL22V10 and GAL20RA10 – and the pin- and             fuse-compatible ATF16V8B, ATF20V8B and ATF22V10 – in galasm/Galette source syntax.
+
+            The \(Minipro.shared.programmerType) programs: \(programmable).
+
+            The GAL20RA10 can be assembled and decoded here, but the TL866A can't program it.
+            """)
     }
 
     /// Decodes the .jed in the buffer (or a chosen .jed file) into equations and a gate diagram.

@@ -13,6 +13,9 @@ struct Expected {
     var activeHigh = true
     var term: GalSum?
     var enable: GalSum?
+    var clock: GalSum?
+    var reset: GalSum?
+    var preset: GalSum?
 }
 
 /// Minimal galasm/Galette .pld reader: chip, signature, pin names, equations up to DESCRIPTION.
@@ -79,6 +82,9 @@ func parsePLD(_ text: String) -> (chip: String, names: [String], eqs: [Int: Expe
         let ext = parts.count > 1 ? parts[1] : ""
         switch ext {
         case "E": e.enable = sum.isTrue ? nil : sum
+        case "CLK": e.clock = sum
+        case "ARST": e.reset = sum.isFalse ? nil : sum
+        case "APRST": e.preset = sum.isFalse ? nil : sum
         case "R": e.kind = .registered; e.term = sum; e.activeHigh = lneg == pinNeg
         default: e.kind = .combinatorial; e.term = sum; e.activeHigh = lneg == pinNeg
         }
@@ -87,13 +93,12 @@ func parsePLD(_ text: String) -> (chip: String, names: [String], eqs: [Int: Expe
     return (chip, names, eqs, ar, sp)
 }
 
-var failed = 0, passed = 0, skipped = 0
+var failed = 0, passed = 0
 for pld in files.filter({ $0.hasSuffix(".pld") }).sorted() {
     let base = String(pld.dropLast(4))
     guard let src = try? String(contentsOf: dir.appendingPathComponent(pld)),
           let jedText = try? String(contentsOf: dir.appendingPathComponent(base + ".jed")) else { continue }
     guard let p = parsePLD(src) else { print("FAIL \(base): can't parse .pld"); failed += 1; continue }
-    if p.chip == "GAL20RA10" { skipped += 1; continue }
     var problems: [String] = []
     do {
         let jed = try JEDECFile.parse(jedText)
@@ -113,6 +118,11 @@ for pld in files.filter({ $0.hasSuffix(".pld") }).sorted() {
                 problems.append("\(n): term \(d.expression(o.term, names, indent: 0)) != \(d.expression(t, names, indent: 0))")
             }
             if o.enable?.normalized != e.enable?.normalized { problems.append("\(n): enable differs") }
+            if o.kind == .registered && p.chip == "GAL20RA10" {
+                if o.clock?.normalized != (e.clock ?? GalSum(rows: [])).normalized { problems.append("\(n): clock differs") }
+                if o.reset?.normalized != e.reset?.normalized { problems.append("\(n): reset differs") }
+                if o.preset?.normalized != e.preset?.normalized { problems.append("\(n): preset differs") }
+            }
         }
         if d.asyncReset?.normalized != p.ar?.normalized { problems.append("AR differs") }
         if d.syncPreset?.normalized != p.sp?.normalized { problems.append("SP differs") }
@@ -123,5 +133,66 @@ for pld in files.filter({ $0.hasSuffix(".pld") }).sorted() {
     if problems.isEmpty { passed += 1; print("ok   \(base)") }
     else { failed += 1; print("FAIL \(base): " + problems.joined(separator: "; ")) }
 }
-print("galtest: \(passed) passed, \(failed) failed, \(skipped) skipped (GAL20RA10)")
-exit(failed == 0 && passed > 0 ? 0 : 1)
+print("galtest decode: \(passed) passed, \(failed) failed")
+
+// Assembler: every .pld must give Galette's .jed byte for byte (with Galette's header line).
+var asmPassed = 0, asmFailed = 0
+func compareJED(_ name: String, _ src: String, _ golden: String, security: Bool) {
+    do {
+        let r = try GalAssembler.assemble(src, securityBit: security, assembler: "Galette 0.3.0")
+        if r.jedec == golden { asmPassed += 1; print("ok   assemble \(name)") }
+        else {
+            asmFailed += 1
+            print("FAIL assemble \(name): output differs")
+            let a = r.jedec.components(separatedBy: "\n"), b = golden.components(separatedBy: "\n")
+            for i in 0..<max(a.count, b.count) where (i < a.count ? a[i] : "<none>") != (i < b.count ? b[i] : "<none>") {
+                print("  line \(i + 1): got  \(i < a.count ? a[i] : "<none>")")
+                print("  line \(i + 1): want \(i < b.count ? b[i] : "<none>")")
+            }
+        }
+    } catch {
+        asmFailed += 1
+        print("FAIL assemble \(name): \(error)")
+    }
+}
+for pld in files.filter({ $0.hasSuffix(".pld") }).sorted() {
+    let base = String(pld.dropLast(4))
+    guard let src = try? String(contentsOf: dir.appendingPathComponent(pld)),
+          let golden = try? String(contentsOf: dir.appendingPathComponent(base + ".jed")) else { continue }
+    compareJED(base, src, golden, security: false)
+}
+let root = dir.deletingLastPathComponent()
+if let src = try? String(contentsOf: root.appendingPathComponent("security/security_bit.pld")),
+   let golden = try? String(contentsOf: root.appendingPathComponent("security/security_bit.jed")) {
+    compareJED("security_bit (security fuse set)", src, golden, security: true)
+} else { asmFailed += 1; print("FAIL security test files missing") }
+
+// Assembler errors: Galette's failing sources must give the same messages.
+var errPassed = 0, errFailed = 0
+let failDir = root.appendingPathComponent("failure")
+if let table = try? String(contentsOf: failDir.appendingPathComponent("expected.tsv")) {
+    for line in table.components(separatedBy: "\n") where line.contains("\t") {
+        let parts = line.components(separatedBy: "\t")
+        let name = parts[0], want = parts[1]
+        guard let src = try? String(contentsOf: failDir.appendingPathComponent(name)) else { errFailed += 1; print("FAIL missing \(name)"); continue }
+        do {
+            _ = try GalAssembler.assemble(src)
+            errFailed += 1; print("FAIL error \(name): assembled, expected \"\(want)\"")
+        } catch {
+            let got = "\(error)"
+            if got == want { errPassed += 1 } else { errFailed += 1; print("FAIL error \(name):\n  got  \(got)\n  want \(want)") }
+        }
+    }
+} else { errFailed += 1; print("FAIL expected.tsv missing") }
+for chip in [GalAssembler.Chip.gal16v8, .gal20v8, .gal22v10, .gal20ra10] {
+    do {
+        let r = try GalAssembler.assemble(GalAssembler.template(for: chip))
+        let d = try GalDecoder.decode(try JEDECFile.parse(r.jedec))
+        if d.chip.rawValue == chip.rawValue && !d.outputs.isEmpty { asmPassed += 1; print("ok   template \(chip.rawValue) assembles and decodes (\(d.outputs.count) outputs)") }
+        else { asmFailed += 1; print("FAIL template \(chip.rawValue): decoded as \(d.chip.rawValue) with \(d.outputs.count) outputs") }
+    } catch { asmFailed += 1; print("FAIL template \(chip.rawValue): \(error)") }
+}
+print("galtest assemble: \(asmPassed) passed, \(asmFailed) failed; errors: \(errPassed) passed, \(errFailed) failed")
+let allOK = failed == 0 && passed > 0 && asmFailed == 0 && asmPassed > 0 && errFailed == 0 && errPassed > 0
+print(allOK ? "GALTEST OK" : "GALTEST FAILED")
+exit(allOK ? 0 : 1)

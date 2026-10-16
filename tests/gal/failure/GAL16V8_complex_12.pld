@@ -1,0 +1,17 @@
+GAL16V8
+Complex ; Check that pin 12 cannot be used as input in complex mode.
+
+Clock I0    I1    I2    I3    I4    I5    NC    NC   GND
+/OE   O0    O1    O2    I6    O4    NC    NC    NC   VCC
+
+O0 = I0 * I1 + I6
+
+O1 = I2 + I3 + O0 ; Can't use O0 as input
+
+O2 = I4 * /I5 + /I4 * I5
+
+/O4 = I0 + I1 + I2 + I3 + I4 + I5
+
+DESCRIPTION
+
+Simple test of combinatorial logic.

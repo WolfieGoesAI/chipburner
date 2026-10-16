@@ -7,27 +7,30 @@ final class GalDecoderWindowController: NSWindowController {
     private let sourceName: String
     private var retainSelf: GalDecoderWindowController?
 
-    static func show(jedText: String, sourceName: String, chipHint: String?, on parent: NSWindow?) {
+    static func show(jedText: String, sourceName: String, chipHint: String?, on parent: NSWindow?, pinNames: [Int: String]? = nil) {
         do {
             let jed = try JEDECFile.parse(jedText)
             let design = try GalDecoder.decode(jed, hint: chipHint)
-            let c = GalDecoderWindowController(design: design, sourceName: sourceName)
+            let c = GalDecoderWindowController(design: design, sourceName: sourceName, pinNames: pinNames)
             c.retainSelf = c
             c.showWindow(nil)
             c.window?.makeKeyAndOrderFront(nil)
         } catch {
             let a = NSAlert()
             a.messageText = "Can't decode \(sourceName)"
-            a.informativeText = "\(error)\n\nThe decoder reads JEDEC fuse maps for GAL16V8, GAL20V8 and GAL22V10 (and the ATF versions of them)."
+            a.informativeText = "\(error)\n\nThe decoder reads JEDEC fuse maps for GAL16V8, GAL20V8, GAL22V10 and GAL20RA10 (and the ATF versions of them)."
             if let p = parent { a.beginSheetModal(for: p) } else { a.runModal() }
         }
     }
 
-    private init(design: GalDesign, sourceName: String) {
+    private let hasSourceNames: Bool
+
+    private init(design: GalDesign, sourceName: String, pinNames: [Int: String]?) {
+        self.hasSourceNames = pinNames != nil
         self.design = design
         self.sourceName = sourceName
         var n: [Int: String] = [:]
-        for pin in 1...design.chip.pins { n[pin] = "P\(pin)" }
+        for pin in 1...design.chip.pins { n[pin] = pinNames?[pin] ?? "P\(pin)" }
         self.names = n
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 640),
                          styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -52,7 +55,7 @@ final class GalDecoderWindowController: NSWindowController {
 
         let summary = NSTextField(wrappingLabelWithString:
             "\(design.chip.rawValue), \(design.modeDescription()). \(design.outputs.count) output(s). " +
-            "Pins are named P1, P2 … because a .jed file doesn't store signal names.")
+            (!hasSourceNames ? "Pins are named P1, P2 … because a .jed file doesn't store signal names." : "Signal names come from the PLD source."))
         summary.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         summary.textColor = .secondaryLabelColor
 
@@ -175,7 +178,7 @@ final class GalDiagramView: NSView {
         blocks = []
         for o in design.outputs {
             let n = max(1, o.term.isTrue ? 1 : o.term.rows.count)
-            let h = 28 + CGFloat(n) * rowH + (o.enable != nil || o.kind == .registered ? 34 : 8)
+            let h = 28 + CGFloat(n) * rowH + (o.enable != nil || o.kind == .registered ? 34 : 8) + (o.reset != nil || o.preset != nil ? 16 : 0)
             blocks.append((y, h, o))
             y += h + 14
         }
@@ -286,7 +289,13 @@ final class GalDiagramView: NSView {
             clk.move(to: NSPoint(x: box.minX, y: box.maxY - 12)); clk.line(to: NSPoint(x: box.minX + 7, y: box.maxY - 7))
             clk.line(to: NSPoint(x: box.minX, y: box.maxY - 2)); clk.stroke()
             line(NSPoint(x: box.minX - 10, y: box.maxY - 7), NSPoint(x: box.minX, y: box.maxY - 7))
-            text("CLK pin \(design.clockPin ?? 1)", nil, dim).draw(at: NSPoint(x: box.minX - 10, y: box.maxY + 2))
+            var clockText = "CLK pin \(design.clockPin ?? 1)"
+            if let c = o.clock { clockText = "CLK = " + design.expression(c, names, indent: 0).replacingOccurrences(of: "\n", with: " ") }
+            text(clockText, nil, dim).draw(at: NSPoint(x: box.minX - 10, y: box.maxY + 2))
+            var rp: [String] = []
+            if let r = o.reset { rp.append("ARST = " + design.expression(r, names, indent: 0).replacingOccurrences(of: "\n", with: " ")) }
+            if let pr = o.preset { rp.append("APRST = " + design.expression(pr, names, indent: 0).replacingOccurrences(of: "\n", with: " ")) }
+            if !rp.isEmpty { text(rp.joined(separator: "   "), nil, dim).draw(at: NSPoint(x: box.minX - 10, y: box.minY - 16)) }
             x = box.maxX
             line(NSPoint(x: x, y: midY), NSPoint(x: x + 18, y: midY))
             x += 18

@@ -189,8 +189,8 @@ NOTE="${DBT//'%'/'%25'}"; NOTE="${NOTE//$'\n'/'%0A'}"
 echo "::notice title=Database reader test::$NOTE"
 
 log "Test: JED decoder against Galette's assembled test cases"
-xcrun swiftc -O -sdk "$SDK" "$ROOT/Sources/GalDecoder.swift" "$ROOT/tests/galtest/main.swift" -o "$WORK/galtest"
-GT="$("$WORK/galtest" "$ROOT/tests/gal/cases" 2>&1)" || { echo "$GT"; note "JED decoder test FAILED" "$(tail -60 <<<"$GT")"; false; }
+xcrun swiftc -O -sdk "$SDK" "$ROOT/Sources/GalDecoder.swift" "$ROOT/Sources/GalAssembler.swift" "$ROOT/tests/galtest/main.swift" -o "$WORK/galtest"
+GT="$("$WORK/galtest" "$ROOT/tests/gal/cases" 2>&1)" || { echo "$GT"; printf '### galtest\n%s\n' "$(grep -v '^ok ' <<<"$GT" | grep -v '^;' | head -150)" > "$ROOT/diag.txt"; false; }
 echo "$GT"
 note "JED decoder test" "$(grep -v '^;' <<<"$GT" | tail -40)"
 

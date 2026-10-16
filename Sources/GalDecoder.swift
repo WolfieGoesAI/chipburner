@@ -111,12 +111,16 @@ struct GalOutput {
     var enable: GalSum?
     var productTermsUsed: Int { term.isTrue ? 1 : term.rows.count }
     var productTermsAvailable: Int
+    // GAL20RA10 only: per-output clock, asynchronous reset and preset product terms.
+    var clock: GalSum? = nil
+    var reset: GalSum? = nil
+    var preset: GalSum? = nil
 }
 
 enum GalChipType: String {
-    case gal16v8 = "GAL16V8", gal20v8 = "GAL20V8", gal22v10 = "GAL22V10"
+    case gal16v8 = "GAL16V8", gal20v8 = "GAL20V8", gal22v10 = "GAL22V10", gal20ra10 = "GAL20RA10"
     var pins: Int { self == .gal16v8 ? 20 : 24 }
-    var fuseCount: Int { [.gal16v8: 2194, .gal20v8: 2706, .gal22v10: 5892][self]! }
+    var fuseCount: Int { [.gal16v8: 2194, .gal20v8: 2706, .gal22v10: 5892, .gal20ra10: 3274][self]! }
 }
 
 struct GalDesign {
@@ -147,7 +151,7 @@ enum GalDecoder {
         var description: String {
             switch self {
             case .unknownSize(let n):
-                return "A fuse map with \(n) fuses isn't a GAL16V8 (2194), GAL20V8 (2706) or GAL22V10 (5892)."
+                return "A fuse map with \(n) fuses isn't a GAL16V8 (2194), GAL20V8 (2706), GAL22V10 (5892) or GAL20RA10 (3274)."
             case .invalidMode:
                 return "The mode fuses (SYN = 0, AC0 = 0) don't describe a valid GALxxV8 mode."
             case .unsupported(let s): return s
@@ -163,6 +167,7 @@ enum GalDecoder {
     private static let col20Complex: [Int?] = [2, 0, 4, 8, 12, 16, 20, 24, 28, 32, 36, nil, 38, 34, nil, 30, 26, 22, 18, 14, 10, nil, 6, nil]
     private static let col20Registered: [Int?] = [nil, 0, 4, 8, 12, 16, 20, 24, 28, 32, 36, nil, nil, 38, 34, 30, 26, 22, 18, 14, 10, 6, 2, nil]
     private static let col22V10: [Int?] = [0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, nil, 42, 38, 34, 30, 26, 22, 18, 14, 10, 6, 2, nil]
+    private static let col20RA10: [Int?] = [nil, 0, 4, 8, 12, 16, 20, 24, 28, 32, 36, nil, nil, 38, 34, 30, 26, 22, 18, 14, 10, 6, 2, nil]
 
     // OLMC n (n = 0 is the lowest output pin) -> first row, and rows per OLMC.
     private static let rowsV8 = [56, 48, 40, 32, 24, 16, 8, 0]
@@ -175,18 +180,19 @@ enum GalDecoder {
         case 2194: return .gal16v8
         case 2706: return .gal20v8
         case 5892, 5893: return .gal22v10   // some ATF22V10 files carry one extra power-down fuse
+        case 3274: return .gal20ra10
         default:
             guard let h = hint?.uppercased() else { return nil }
             if h.contains("16V8") { return .gal16v8 }
             if h.contains("20V8") { return .gal20v8 }
             if h.contains("22V10") { return .gal22v10 }
+            if h.contains("20RA10") { return .gal20ra10 }
             return nil
         }
     }
 
     static func decode(_ jed: JEDECFile, hint: String? = nil) throws -> GalDesign {
         let n = jed.declaredCount ?? jed.fuses.count
-        if n == 3274 { throw DecodeError.unsupported("This is a GAL20RA10 fuse map, which the decoder doesn't handle yet.") }
         guard let chip = chipType(fuseCount: n, hint: hint) else { throw DecodeError.unknownSize(n) }
         var f = jed.fuses
         if f.count < chip.fuseCount { f += [Bool](repeating: false, count: chip.fuseCount - f.count) }
@@ -197,7 +203,12 @@ enum GalDecoder {
         if n != chip.fuseCount && (chip != .gal22v10 || n != 5893) {
             notes.append("The file declares \(n) fuses; decoded as \(chip.rawValue) (\(chip.fuseCount)).")
         }
-        var design = chip == .gal22v10 ? decode22V10(f, notes: &notes) : try decodeV8(f, chip: chip, notes: &notes)
+        var design: GalDesign
+        switch chip {
+        case .gal22v10: design = decode22V10(f, notes: &notes)
+        case .gal20ra10: design = decode20RA10(f, notes: &notes)
+        default: design = try decodeV8(f, chip: chip, notes: &notes)
+        }
         design.securityBit = jed.securityBit
         if jed.securityBit { design.notes.append("The security fuse is set: a chip programmed from this file can't be read back.") }
         return design
@@ -347,6 +358,69 @@ enum GalDecoder {
     }
 }
 
+extension GalDecoder {
+    /// GAL20RA10: every output has its own 8 rows – output enable, clock, reset, preset and
+    /// four product terms. An output is combinatorial when its reset and preset terms are both
+    /// always true (unprogrammed); pin 1 is /PL (preload) and pin 13 the global /OE.
+    static func decode20RA10(_ f: [Bool], notes: inout [String]) -> GalDesign {
+        let cols = 40
+        var p = cols * 80
+        let s0 = Array(f[p..<(p + 10)]); p += 10
+        let sig = bytesOf(f[p..<(p + 64)])
+        var colToPin: [Int: Int] = [:]
+        for (i, c) in col20RA10.enumerated() { if let c = c { colToPin[c] = i + 1 } }
+        let starts = [72, 64, 56, 48, 40, 32, 24, 16, 8, 0]
+        var outputs: [GalOutput] = []
+        var inputs: [Int] = []
+        for olmc in (0..<10).reversed() {
+            let pin = 14 + olmc, bit = 9 - olmc, start = starts[olmc]
+            func rows(_ a: Int, _ b: Int) -> GalSum { sumOf(f, rows: (start + a)..<(start + b), cols: cols, colToPin: colToPin) }
+            let oe = rows(0, 1), clk = rows(1, 2), rst = rows(2, 3), pre = rows(3, 4), term = rows(4, 8)
+            if oe.isFalse || (term.isFalse && !s0[bit]) { inputs.append(pin); continue }
+            let registered = !(rst.isTrue && pre.isTrue)
+            var o = GalOutput(pin: pin, kind: registered ? .registered : .combinatorial, activeHigh: s0[bit],
+                              term: term, enable: oe.isTrue ? nil : oe, productTermsAvailable: 4)
+            if registered {
+                o.clock = clk
+                o.reset = rst.isFalse ? nil : rst
+                o.preset = pre.isFalse ? nil : pre
+            }
+            outputs.append(o)
+        }
+        notes.append("Pin 1 is /PL (register preload) and pin 13 is /OE, which enables all outputs together with each output's own enable term.")
+        return GalDesign(chip: .gal20ra10, mode: "", outputs: outputs, inputPins: Array(2...11) + inputs.sorted(),
+                         clockPin: nil, oePin: nil, asyncReset: nil, syncPreset: nil,
+                         signature: sig, securityBit: false, notes: notes)
+    }
+
+    fileprivate static func bytesOf(_ bits: ArraySlice<Bool>) -> [UInt8] {
+        var out: [UInt8] = []
+        var i = bits.startIndex
+        while i + 8 <= bits.endIndex {
+            var b: UInt8 = 0
+            for j in 0..<8 where bits[i + j] { b |= UInt8(0x80 >> j) }
+            out.append(b); i += 8
+        }
+        return out
+    }
+
+    fileprivate static func sumOf(_ f: [Bool], rows: Range<Int>, cols: Int, colToPin: [Int: Int]) -> GalSum {
+        var out: [[GalLiteral]] = []
+        rowLoop: for r in rows {
+            var lits: [GalLiteral] = []
+            for c in stride(from: 0, to: cols, by: 2) {
+                let pos = !f[r * cols + c], neg = !f[r * cols + c + 1]
+                if pos && neg { continue rowLoop }
+                if !pos && !neg { continue }
+                lits.append(GalLiteral(pin: colToPin[c] ?? -(c + 1), negated: neg))
+            }
+            out.append(lits)
+        }
+        if out.contains(where: { $0.isEmpty }) { return GalSum(rows: [[]]) }
+        return GalSum(rows: out)
+    }
+}
+
 // MARK: Text output (galasm-style equations)
 
 extension GalDesign {
@@ -371,7 +445,9 @@ extension GalDesign {
         case "simple": return "simple mode (combinatorial outputs, always enabled)"
         case "complex": return "complex mode (combinatorial outputs with product-term output enable)"
         case "registered": return "registered mode (pin \(clockPin ?? 1) = clock, pin \(oePin ?? 11) = /OE for registered outputs)"
-        default: return clockPin != nil ? "pin 1 = clock for registered outputs" : "all outputs combinatorial"
+        default:
+            if chip == .gal20ra10 { return "each output with its own clock, reset and preset terms" }
+            return clockPin != nil ? "pin 1 = clock for registered outputs" : "all outputs combinatorial"
         }
     }
 
@@ -390,6 +466,11 @@ extension GalDesign {
                 let eh = name(o.pin, names) + ".E = "
                 s += eh + expression(e, names, indent: eh.count) + "\n"
             }
+            for (suffix, term) in [("CLK", o.clock), ("ARST", o.reset), ("APRST", o.preset)] {
+                guard let t = term else { continue }
+                let h = name(o.pin, names) + "." + suffix + " = "
+                s += h + expression(t, names, indent: h.count) + "\n"
+            }
             s += "\n"
         }
         if let ar = asyncReset { s += "AR = " + expression(ar, names, indent: 5) + "\n" }
@@ -406,6 +487,8 @@ extension GalDesign {
     func role(of pin: Int) -> String {
         if pin == chip.pins { return "VCC" }
         if pin == chip.pins / 2 { return "GND" }
+        if chip == .gal20ra10 && pin == 1 { return "/PL (register preload)" }
+        if chip == .gal20ra10 && pin == 13 { return "/OE (enables all outputs)" }
         if pin == clockPin { return chip == .gal22v10 ? "clock / input" : "clock" }
         if pin == oePin { return "/OE (output enable for registered outputs)" }
         if let o = outputs.first(where: { $0.pin == pin }) {
