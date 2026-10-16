@@ -154,7 +154,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
              button("Ident EPROM…", #selector(identifyChip(_:))), button("Chip Info", #selector(chipInfo(_:))), configButton, NSView()],
             [NSView(), NSView(), NSView(), logicID, logic, NSView(), NSView()],
         ])
-        chipRow.rowSpacing = 2
+        chipRow.rowSpacing = 6
         chipRow.columnSpacing = 8
         chipRow.rowAlignment = .firstBaseline
         for c in 2...5 { chipRow.column(at: c).xPlacement = .fill }   // equal-width buttons per column
