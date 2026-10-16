@@ -194,30 +194,27 @@ GT="$("$WORK/galtest" "$ROOT/tests/gal/cases" 2>&1)" || { echo "$GT"; note "JED 
 echo "$GT"
 note "JED decoder test" "$(grep -v '^;' <<<"$GT" | tail -40)"
 
-log "Diagnostics: EEPROM entries and erase handling"
-note "infoic.xml entries" "$(grep -i -E 'name="(X28C256|AT28C256|W27C512|AM27C256|GAL16V8)[^"]*"' "$APP/Contents/Resources/minipro/infoic.xml" | head -12 | cut -c1-400)"
-note "minipro source: erase handling" "$(grep -rn -i -E 'can.?t be erased|erase.*not|can_erase|ERASE' "$WORK/src/minipro-git/src" 2>/dev/null | grep -v -i 'unprotect' | head -30 | cut -c1-220)"
-note "minipro source: device flags" "$(grep -rn -E 'flags\.|#define [A-Z_]+ +0x[0-9a-fA-F]+' "$WORK/src/minipro-git/src/database.h" 2>/dev/null | head -40 | cut -c1-160)"
-note "infoic.xml X28C256 entry" "$(grep -i -B2 -A14 'name="X28C256' "$APP/Contents/Resources/minipro/infoic.xml" | head -20 | tr -s ' ')"
-note "minipro main.c: erase checks" "$(grep -rn -B2 -A4 'can_erase' "$WORK/src/minipro-git/src/main.c" 2>/dev/null | head -40 | cut -c1-200)"
-note "minipro -d X28C256" "$("$APP/Contents/MacOS/minipro" "${DBARGS[@]}" -q TL866A -d X28C256 2>&1 | head -20)"
-note "minipro -L X28C256" "$("$APP/Contents/MacOS/minipro" "${DBARGS[@]}" -q TL866A -L X28C256 2>&1 | head -10)"
-note "minipro -u/-P manual" "$(grep -E -A3 '^[[:space:]]*-[uP],' <<<"$MANTXT" | tr -s ' ')"
-
 log "Diagnostics: auto-detect and config pages"
-note "man: -a auto detect" "$(grep -E -A10 '^[[:space:]]*-a <type>' <<<"$MANTXT" | tr -s ' ')"
-note "man: -c page / fuses" "$(grep -E -A14 '^[[:space:]]*-c, --page' <<<"$MANTXT" | tr -s ' ')"
-note "man: --fuses --uid --lock" "$(grep -E -B4 -A10 -- '--fuses, --uid' <<<"$MANTXT" | tr -s ' ')"
-note "man: -f format" "$(grep -E -A10 '^[[:space:]]*-f, --format' <<<"$MANTXT" | tr -s ' ')"
-note "source: auto detect" "$(grep -rn -i -E 'auto_detect|autodetect|spi_autodetect' "$WORK/src/minipro-git/src"/*.c 2>/dev/null | head -30 | cut -c1-200)"
-note "source: fuse file writer" "$(grep -rn -E 'fprintf\(.*(=|0x%)|\"user_id|\"lock|conf_word|fuses_' "$WORK/src/minipro-git/src/main.c" 2>/dev/null | head -40 | cut -c1-200)"
-SRCF="$(ls "$WORK/src/minipro-git/src")"; note "source files" "$SRCF"
+DIAG=""
+diag() { DIAG+="### $1"$'\n'"$2"$'\n\n'; }
+diag "man: -a auto detect" "$(grep -E -A10 '^[[:space:]]*-a <type>' <<<"$MANTXT" | tr -s ' ')"
+diag "man: -c page / fuses" "$(grep -E -A14 '^[[:space:]]*-c, --page' <<<"$MANTXT" | tr -s ' ')"
+diag "man: --fuses --uid --lock" "$(grep -E -B4 -A10 -- '--fuses, --uid' <<<"$MANTXT" | tr -s ' ')"
+diag "man: -f format" "$(grep -E -A10 '^[[:space:]]*-f, --format' <<<"$MANTXT" | tr -s ' ')"
+diag "source: auto detect" "$(grep -rn -i -E 'auto_detect|autodetect|spi_autodetect' "$WORK/src/minipro-git/src"/*.c 2>/dev/null | head -30 | cut -c1-200)"
+diag "source: fuse file writer" "$(grep -rn -E 'fprintf\(.*(=|0x%)|\"user_id|\"lock|conf_word|fuses_' "$WORK/src/minipro-git/src/main.c" 2>/dev/null | head -40 | cut -c1-200)"
+diag "source: config text format" "$(grep -rn -E '%s ?= ?0x|= ?0x%|fuses|user_id|lock_bit' "$WORK/src/minipro-git/src"/*.c 2>/dev/null | grep -v '^.*://' | head -60 | cut -c1-220)"
+SRCF="$(ls "$WORK/src/minipro-git/src")"; diag "source files" "$SRCF"
 for c in ATMEGA8A@DIP28 ATTINY85@DIP8 PIC16F628A AT89S52@DIP40 W25Q32BV@SOIC8; do
-  note "-d $c" "$("$APP/Contents/MacOS/minipro" "${DBARGS[@]}" -q TL866A -d "$c" 2>&1 | grep -v overridden | head -16)"
+  diag "-d $c" "$("$APP/Contents/MacOS/minipro" "${DBARGS[@]}" -q TL866A -d "$c" 2>&1 | grep -v overridden | head -16)"
 done
-note "-L 25Q" "$("$APP/Contents/MacOS/minipro" "${DBARGS[@]}" -q TL866A -L W25Q 2>&1 | grep -v overridden | head -12)"
-note "infoic fuses for ATMEGA8A" "$(grep -n -i -B2 -A20 'name="ATMEGA8A' "$APP/Contents/Resources/minipro/infoic.xml" | head -30 | tr -s ' ')"
-note "infoic fuse sections" "$(grep -n -i -E '<(fuse|config|lock|uid)[a-z_]*' "$APP/Contents/Resources/minipro/infoic.xml" | head -20 | tr -s ' ')"
+diag "-L 25Q" "$("$APP/Contents/MacOS/minipro" "${DBARGS[@]}" -q TL866A -L W25Q 2>&1 | grep -v overridden | head -12)"
+diag "infoic fuses for ATMEGA8A" "$(grep -n -i -B2 -A20 'name="ATMEGA8A' "$APP/Contents/Resources/minipro/infoic.xml" | head -30 | tr -s ' ')"
+diag "infoic fuse sections" "$(grep -n -i -E '<(fuse|config|lock|uid)[a-z_]*' "$APP/Contents/Resources/minipro/infoic.xml" | head -20 | tr -s ' ')"
+
+echo "$DIAG"
+note "Diagnostics A" "$(head -c 30000 <<<"$DIAG")"
+note "Diagnostics B" "$(tail -c +30001 <<<"$DIAG" | head -c 30000)"
 
 # ---------- sign and package ----------
 log "Ad-hoc signing"
