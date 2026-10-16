@@ -42,5 +42,21 @@ for (s, want) in samples {
     expect(got == want, "ID parser: \"\(s)\" -> \(got.map { String(format: "0x%04X", $0) } ?? "nil")")
 }
 
+// Logic auto-identify candidates
+print("  logic pin counts: \(db.logicPinCounts.map(String.init).joined(separator: ", "))")
+for pins in [14, 16, 20, 24] {
+    let std = db.logicGroups(pins: pins, standardPowerOnly: true)
+    let all = db.logicGroups(pins: pins, standardPowerOnly: false, voltage: "")
+    print("  \(pins)-pin logic groups: \(std.count) standard-power 5V of \(all.count) total")
+}
+let g14 = db.logicGroups(pins: 14, standardPowerOnly: true)
+expect(g14.contains(where: { $0.contains("7400") }), "14-pin standard groups include 7400")
+if let i7490 = db.info(for: "7490", programmer: "TL866A") {
+    print("  7490: GND \(i7490.gndPins) VCC \(i7490.vccPins) standard=\(i7490.hasStandardPower)")
+    expect(!g14.contains(where: { $0.contains("7490") }), "7490 (VCC on pin 5) is left out of the standard scan")
+}
+let i7400 = db.info(for: "7400", programmer: "TL866A")
+expect(i7400?.gndPins == [7] && i7400?.vccPins == [14], "7400 power pins are GND 7, VCC 14")
+
 print(failed ? "DBTEST FAILED" : "DBTEST OK")
 exit(failed ? 1 : 0)

@@ -27,6 +27,14 @@ struct ChipInfo {
     let dataSize: Int
     let database: String   // e.g. INFOIC, INFOIC2PLUS, LOGIC
     let pins: Int          // logic chips only
+    // Logic chips only:
+    var group: String = ""        // names sharing the same test vectors, e.g. "7400,7437,74132"
+    var voltage: String = ""      // test supply, e.g. "5V"
+    var gndPins: [Int] = []       // pins the vectors tie to ground ("G")
+    var vccPins: [Int] = []       // pins the vectors tie to supply ("V")
+
+    /// Ground on the last pin of the first row and supply on the last pin – the usual DIP logic layout.
+    var hasStandardPower: Bool { pins > 0 && gndPins == [pins / 2] && vccPins == [pins] }
 
     /// "@DIP28" style package suffix, or "" when the name has none.
     var packageSuffix: String {
@@ -127,12 +135,37 @@ final class ChipDatabase {
 
     var count: Int { lock.lock(); defer { lock.unlock() }; return all.count }
 
+    /// Logic chip groups (chips sharing test vectors) with this pin count, for auto-identify.
+    /// Each group is returned once, as its list of names.
+    func logicGroups(pins: Int, standardPowerOnly: Bool, voltage: String = "5V") -> [[String]] {
+        lock.lock(); defer { lock.unlock() }
+        var seen = Set<String>()
+        var out: [[String]] = []
+        for c in all where c.kind == .logic && c.pins == pins {
+            if standardPowerOnly && !c.hasStandardPower { continue }
+            if !voltage.isEmpty && c.voltage.uppercased() != voltage.uppercased() { continue }
+            guard seen.insert(c.group).inserted else { continue }
+            out.append(c.group.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty })
+        }
+        return out
+    }
+
+    /// Pin counts that occur among logic chips, smallest first.
+    var logicPinCounts: [Int] {
+        lock.lock(); defer { lock.unlock() }
+        return Array(Set(all.filter { $0.kind == .logic && $0.pins > 0 }.map { $0.pins })).sorted()
+    }
+
     // MARK: XML
 
     private final class Delegate: NSObject, XMLParserDelegate {
         var entries: [ChipInfo] = []
         var types: [String] = []
         private var database = ""
+        // Logic chip being read: entries are added once its first vector shows the power pins.
+        private var pendingLogic: (names: String, pins: Int, voltage: String)?
+        private var vectorText: String?
+        private var logicDone = false
 
         private func hex(_ s: String?) -> UInt32 {
             guard var s = s?.trimmingCharacters(in: .whitespaces), !s.isEmpty else { return 0 }
@@ -146,6 +179,12 @@ final class ChipDatabase {
             case "database":
                 database = attr["type"] ?? ""
                 if !types.contains(database) { types.append(database) }
+            case "ic" where database == "LOGIC":
+                guard let names = attr["name"] else { return }
+                pendingLogic = (names, Int(attr["pins"] ?? "") ?? 0, attr["voltage"] ?? "")
+                logicDone = false
+            case "vector" where pendingLogic != nil && !logicDone:
+                vectorText = ""
             case "ic":
                 guard let names = attr["name"] else { return }
                 let kind = ChipInfo.Kind(rawValue: Int(attr["type"] ?? "") ?? 0) ?? .unknown
@@ -160,6 +199,39 @@ final class ChipDatabase {
                                             codeSize: code, dataSize: data, database: database, pins: pins))
                 }
             default: break
+            }
+        }
+
+        func parser(_ parser: XMLParser, foundCharacters string: String) {
+            if vectorText != nil { vectorText! += string }
+        }
+
+        func parser(_ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?, qualifiedName qName: String?) {
+            if elementName == "vector", let text = vectorText {
+                vectorText = nil
+                addLogic(vector: text)
+            } else if elementName == "ic", pendingLogic != nil {
+                if !logicDone { addLogic(vector: nil) }
+                pendingLogic = nil
+            }
+        }
+
+        private func addLogic(vector: String?) {
+            guard let p = pendingLogic, !logicDone else { return }
+            logicDone = true
+            var gnd: [Int] = [], vcc: [Int] = []
+            if let v = vector {
+                let tokens = v.split(whereSeparator: { $0 == " " || $0 == "\t" || $0 == "\n" })
+                for (i, t) in tokens.enumerated() {
+                    if t == "G" { gnd.append(i + 1) } else if t == "V" { vcc.append(i + 1) }
+                }
+            }
+            for n in p.names.split(separator: ",") {
+                let name = n.trimmingCharacters(in: .whitespaces)
+                if name.isEmpty { continue }
+                entries.append(ChipInfo(name: name, kind: .logic, chipID: 0, codeSize: 0, dataSize: 0,
+                                        database: "LOGIC", pins: p.pins, group: p.names, voltage: p.voltage,
+                                        gndPins: gnd, vccPins: vcc))
             }
         }
     }

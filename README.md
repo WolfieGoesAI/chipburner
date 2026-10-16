@@ -9,6 +9,8 @@ no drivers, nothing else to install.
 - **Identify**: reads a chip's electronic ID and lists every matching chip in the database
 - Read, blank check, program, verify, erase
 - **Logic Test** for 74xx/40xx logic ICs, with pass/fail and the failing vectors in the log
+- **Identify Logic…**: pick the pin count and ChipBurner tries every matching 5 V logic chip type, then lists the ones the chip passes
+- Log in its own window, shown with the **Log** button (or Window ▸ Log, ⌘L)
 - **Memory** selector for microcontrollers: code, data EEPROM, config/fuses, user row, calibration
 - **GAL/PLD** support: read to and program from `.jed` fuse files
 - Hex view of the buffer with byte-sum and CRC32; text view for `.jed` and fuse files
@@ -41,6 +43,14 @@ To make a versioned download on the Releases page, push a tag such as `v0.1.0`.
 Choose **Identify…**, pick the chip family (28-pin or 32-pin UV EPROM, or "same type as" the chip already
 selected), and ChipBurner reads the ID and offers the matching parts. Chips without an electronic ID,
 such as NMOS 2716/2732, still have to be picked with **Search…**.
+
+## Identify Logic
+
+Logic chips have no electronic ID, so ChipBurner runs the test vectors of every candidate with the chosen pin
+count and keeps the ones the chip passes (the same approach as XGecu's own software). To keep this gentle, it
+only tries 5 V chip types with the usual power layout – ground on the last pin of the first row, supply on the
+last pin – and stops straight away if minipro reports overcurrent. Chips with other power pins, such as the
+7490, can still be checked one at a time with **Logic Test**.
 
 ## Options
 

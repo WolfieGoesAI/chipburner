@@ -20,6 +20,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
+    /// Lets Window ▸ Log work while the log window itself is in front.
+    @objc func toggleLog(_ sender: Any?) { mainController?.toggleLog(sender) }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let c = mainController, c.isBusy else { return .terminateNow }
         let alert = NSAlert()
@@ -71,6 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         chipMenu.addItem(withTitle: "Verify", action: #selector(MainWindowController.verifyChip(_:)), keyEquivalent: "")
         chipMenu.addItem(withTitle: "Program…", action: #selector(MainWindowController.programChip(_:)), keyEquivalent: "")
         chipMenu.addItem(withTitle: "Logic Test", action: #selector(MainWindowController.logicTest(_:)), keyEquivalent: "t")
+        chipMenu.addItem(withTitle: "Identify Logic Chip…", action: #selector(MainWindowController.identifyLogic(_:)), keyEquivalent: "")
         chipMenu.addItem(.separator())
         chipMenu.addItem(withTitle: "Stop", action: #selector(MainWindowController.stop(_:)), keyEquivalent: ".")
         chipItem.submenu = chipMenu
@@ -78,6 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let winItem = NSMenuItem(); main.addItem(winItem)
         let winMenu = NSMenu(title: "Window")
         winMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        winMenu.addItem(withTitle: "Log", action: #selector(MainWindowController.toggleLog(_:)), keyEquivalent: "l")
         winItem.submenu = winMenu
         NSApp.windowsMenu = winMenu
         return main

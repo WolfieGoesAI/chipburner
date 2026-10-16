@@ -9,6 +9,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     private var bufferIsText = false
     private var bufferExt = "bin"
     private var running: Process?
+    private var scanCancelled = false
+    private var logWindow: NSWindow?
     private(set) var isBusy = false { didSet { updateEnabledState() } }
 
     // MARK: Views
@@ -138,9 +140,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         let verify = button("Verify", #selector(verifyChip(_:)))
         let erase = button("Erase", #selector(eraseChip(_:)))
         let logic = button("Logic Test", #selector(logicTest(_:)))
+        let logicID = button("Identify Logic…", #selector(identifyLogic(_:)))
         stopButton = button("Stop", #selector(stop(_:)))
-        actionButtons = [read, blank, program, verify, erase, logic]
-        let actionRow = row([read, blank, program, verify, erase, logic, spacer(), stopButton])
+        actionButtons = [read, blank, program, verify, erase, logic, logicID]
+        let actionRow = row([read, blank, program, verify, erase, logic, logicID, spacer(), stopButton])
 
         memoryTypes.forEach { memoryPopup.addItem(withTitle: $0.title) }
         memoryPopup.controlSize = .small
@@ -157,12 +160,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
                            button("Save .bin…", #selector(saveBinary(_:))),
                            button("Save .hex…", #selector(saveIntelHex(_:)))])
 
-        let split = NSSplitView()
-        split.isVertical = false
-        split.dividerStyle = .thin
-        split.addArrangedSubview(scroll(hexView))
-        split.addArrangedSubview(scroll(logView))
-        split.heightAnchor.constraint(greaterThanOrEqualToConstant: 300).isActive = true
+        let bufferView = scroll(hexView)
+        bufferView.heightAnchor.constraint(greaterThanOrEqualToConstant: 300).isActive = true
+        buildLogWindow()
 
         progress.isIndeterminate = false
         progress.minValue = 0
@@ -170,9 +170,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         progress.style = .bar
         progress.widthAnchor.constraint(equalToConstant: 220).isActive = true
         statusLabel.lineBreakMode = .byTruncatingTail
-        let statusRow = row([statusLabel, spacer(), progress])
+        let logButton = button("Log", #selector(toggleLog(_:)))
+        let statusRow = row([statusLabel, spacer(), progress, logButton])
 
-        let rows: [NSView] = [progRow, chipRow, chipInfoLabel, actionRow, optionsRow, fileRow, split, statusRow]
+        let rows: [NSView] = [progRow, chipRow, chipInfoLabel, actionRow, optionsRow, fileRow, bufferView, statusRow]
         let stack = NSStackView(views: rows)
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -191,8 +192,39 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             v.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -32).isActive = true
         }
         stack.setHuggingPriority(.defaultLow, for: .vertical)
-        split.setHoldingPriority(.defaultLow, forSubviewAt: 0)
-        DispatchQueue.main.async { split.setPosition(split.bounds.height * 0.6, ofDividerAt: 0) }
+        bufferView.setContentHuggingPriority(.defaultLow, for: .vertical)
+    }
+
+    /// The log lives in its own window, hidden until the Log button (or Window ▸ Log) shows it.
+    private func buildLogWindow() {
+        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 420),
+                         styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                         backing: .buffered, defer: true)
+        w.title = "ChipBurner Log"
+        w.isReleasedWhenClosed = false
+        w.minSize = NSSize(width: 360, height: 200)
+        let sv = scroll(logView)
+        sv.borderType = .noBorder
+        w.contentView = sv
+        if !w.setFrameUsingName("ChipBurnerLog") { w.center() }
+        _ = w.setFrameAutosaveName("ChipBurnerLog")
+        logWindow = w
+    }
+
+    @objc func toggleLog(_ sender: Any?) {
+        guard let w = logWindow else { return }
+        if w.isVisible {
+            w.orderOut(nil)
+        } else {
+            if !UserDefaults.standard.bool(forKey: "logPlaced"), let main = window {
+                // First time: put it beside the main window.
+                let f = main.frame
+                w.setFrameTopLeftPoint(NSPoint(x: f.maxX + 12, y: f.maxY))
+                UserDefaults.standard.set(true, forKey: "logPlaced")
+            }
+            w.makeKeyAndOrderFront(nil)
+            logView.scrollToEndOfDocument(nil)
+        }
     }
 
     // MARK: Helpers
@@ -354,7 +386,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             self.isBusy = false
             let ok = status == 0
             self.progress.doubleValue = ok ? 100 : 0
-            self.setStatus(ok ? "\(title): done" : "\(title): failed (exit code \(status))")
+            self.setStatus(ok ? "\(title): done" : "\(title): failed (exit code \(status)) – see Log")
             self.log(ok ? "✓ \(title) finished." : "✗ \(title) failed (exit code \(status)).")
             if !ok { NSSound.beep() }
             done?(ok, collected.joined(separator: "\n"))
@@ -521,19 +553,112 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         let name = chip
         runJob("Logic test \(name)", ["-p", name, "-T"]) { [weak self] ok, output in
             guard let self = self else { return }
-            let lines = output.components(separatedBy: .newlines)
-            let failing = lines.filter { $0.range(of: "[01HLZXCGV]-", options: .regularExpression) != nil }
+            let failing = Self.failingVectorLines(output)
             if ok && failing.isEmpty {
                 self.showInfo("\(name) passed", "All test vectors matched. Details are in the log.")
             } else if !failing.isEmpty {
-                self.showError("\(name) failed", "\(failing.count) test vector(s) had pins in the wrong state (marked with “-” in the log).")
+                self.showError("\(name) failed", "\(failing.count) test vector(s) had pins in the wrong state. Press Log to see them (marked with “-”).")
             } else {
-                self.showError("Logic test didn't complete", "See the log for minipro's message.")
+                self.showError("Logic test didn't complete", "Press Log to see minipro's message.")
+            }
+        }
+    }
+
+    /// minipro marks a pin that didn't match with "-" right after the expected state.
+    private static func failingVectorLines(_ output: String) -> [String] {
+        output.components(separatedBy: .newlines).filter { $0.range(of: "[01HLZXCGV]-", options: .regularExpression) != nil }
+    }
+
+    /// Logic chips have no ID, so this runs the test vectors of every candidate with the chosen pin count
+    /// and lists the ones the chip passes.
+    @objc func identifyLogic(_ sender: Any?) {
+        guard let w = window, !isBusy else { return }
+        let db = ChipDatabase.shared
+        guard db.isLoaded else { showError("The chip database is still loading.", "Try again in a moment."); return }
+        let counts = db.logicPinCounts.filter { !db.logicGroups(pins: $0, standardPowerOnly: true).isEmpty }
+        guard !counts.isEmpty else { showError("No logic chips in the database.", ""); return }
+        let popup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 300, height: 26), pullsDown: false)
+        for c in counts {
+            popup.addItem(withTitle: "\(c) pins (\(db.logicGroups(pins: c, standardPowerOnly: true).count) chip types)")
+        }
+        if let i = counts.firstIndex(of: UserDefaults.standard.integer(forKey: "logicPins")) { popup.selectItem(at: i) }
+        else if let i = counts.firstIndex(of: 14) { popup.selectItem(at: i) }
+        let a = NSAlert()
+        a.messageText = "Identify logic chip"
+        a.informativeText = "Put the chip in the socket bottom-aligned with pin 1 at the lever end, and choose its pin count. ChipBurner runs the 5 V test of every chip type with ground on the last pin of the first row and supply on the last pin, and lists the ones it passes. This takes about a second per type; Stop ends it early."
+        a.accessoryView = popup
+        a.addButton(withTitle: "Start")
+        a.addButton(withTitle: "Cancel")
+        a.beginSheetModal(for: w) { [weak self] resp in
+            guard let self = self, resp == .alertFirstButtonReturn else { return }
+            let pins = counts[max(0, popup.indexOfSelectedItem)]
+            UserDefaults.standard.set(pins, forKey: "logicPins")
+            self.runLogicScan(pins: pins)
+        }
+    }
+
+    private func runLogicScan(pins: Int) {
+        let groups = ChipDatabase.shared.logicGroups(pins: pins, standardPowerOnly: true)
+        guard !groups.isEmpty else { return }
+        isBusy = true
+        scanCancelled = false
+        progress.doubleValue = 0
+        log("▶︎ Identify logic: testing \(groups.count) \(pins)-pin chip types")
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            var passed: [[String]] = []
+            var abortReason: String?
+            var tested = 0
+            for (i, g) in groups.enumerated() {
+                guard let self = self else { return }
+                if self.scanCancelled { abortReason = "Stopped."; break }
+                let name = g[0]
+                DispatchQueue.main.async {
+                    self.setStatus("Testing \(g.joined(separator: " / ")) (\(i + 1) of \(groups.count))")
+                    self.progress.doubleValue = Double(i) / Double(groups.count) * 100
+                }
+                let r = Minipro.shared.runSync(["-p", name, "-T"])
+                tested += 1
+                let lower = r.output.lowercased()
+                if lower.contains("overcurrent") {
+                    abortReason = "minipro reported overcurrent while testing \(name). Check the chip's orientation and pin count."
+                    DispatchQueue.main.async { self.log(r.output.trimmingCharacters(in: .whitespacesAndNewlines)) }
+                    break
+                }
+                if lower.contains("no programmer") || lower.contains("not found") && lower.contains("programmer") {
+                    abortReason = "The programmer isn't responding. Check the USB cable."
+                    break
+                }
+                let ok = r.status == 0 && Self.failingVectorLines(r.output).isEmpty
+                if ok { passed.append(g) }
+                DispatchQueue.main.async { self.log("\(g.joined(separator: " / ")): \(ok ? "PASS" : "fail")") }
+            }
+            DispatchQueue.main.async {
+                guard let self = self, let w = self.window else { return }
+                self.isBusy = false
+                self.progress.doubleValue = abortReason == nil ? 100 : 0
+                self.setStatus("Identify logic: \(passed.count) match(es) after \(tested) of \(groups.count) types")
+                self.log("✓ Identify logic finished: \(passed.count) match(es).")
+                if let reason = abortReason, passed.isEmpty {
+                    self.showError("Identify stopped", reason)
+                    return
+                }
+                guard !passed.isEmpty else {
+                    self.showError("No match", "The chip didn't pass any \(pins)-pin test. Check that it is seated correctly, or that it isn't one with non-standard power pins (such as the 7490) – those can be tested one by one with Logic Test.")
+                    return
+                }
+                let names = passed.map { $0.joined(separator: " / ") }
+                let picker = ChipSearchController(title: "Logic chips the chip passed", results: names) { [weak self] choice in
+                    guard let self = self, let choice = choice else { return }
+                    let first = choice.components(separatedBy: " / ").first ?? choice
+                    self.selectChip(first)
+                }
+                picker.present(on: w)
             }
         }
     }
 
     @objc func stop(_ sender: Any?) {
+        if isBusy && running == nil { scanCancelled = true; log("Stopping after the current chip…"); return }
         guard let p = running else { return }
         log("Stopping…")
         p.interrupt()
