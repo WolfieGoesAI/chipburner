@@ -186,7 +186,21 @@ grep -q -i '27C256' <<<"$SEARCH" || { echo "ERROR: chip search returned nothing"
 
 log "Test: ChipBurner's database reader against the bundled database"
 xcrun swiftc -O -sdk "$SDK" "$ROOT/Sources/ChipDatabase.swift" "$ROOT/Sources/ChipCapabilities.swift" "$ROOT/Sources/DataFormats.swift" "$ROOT/Sources/BufferOps.swift" "$ROOT/tests/dbtest/main.swift" -o "$WORK/dbtest"
-DBT="$("$WORK/dbtest" "$APP/Contents/Resources/minipro/infoic.xml" "$APP/Contents/Resources/minipro/logicic.xml" 2>&1)" || { echo "$DBT"; false; }
+DBT="$("$WORK/dbtest" "$APP/Contents/Resources/minipro/infoic.xml" "$APP/Contents/Resources/minipro/logicic.xml" 2>&1)" || {
+  echo "$DBT"
+  X="$APP/Contents/Resources/minipro/infoic.xml"
+  {
+    echo "### dbtest failures"; grep -E "FAIL|not found" <<<"$DBT" | head -30
+    echo "### minipro source"; echo "$MINIPRO_DESC"
+    echo "### files in minipro source"; (cd "$WORK/src/minipro-git" && ls; ls -la *.xml 2>/dev/null)
+    echo "### ATMEGA8A in infoic"; grep -n -i -B3 -A22 'ATMEGA8A' "$X" | head -60 | tr -s ' '
+    echo "### PIC16F84A in infoic"; grep -n -i -B3 -A5 'PIC16F84A' "$X" | head -30 | tr -s ' '
+    echo "### database sections"; grep -n -E '<database|type="INFOIC' "$X" | head
+    echo "### minipro -d ATMEGA8A"; "$APP/Contents/MacOS/minipro" --infoic "$X" -q TL866A -d ATMEGA8A 2>&1 | head -20
+    echo "### minipro -L ATMEGA8"; "$APP/Contents/MacOS/minipro" --infoic "$X" -q TL866A -L ATMEGA8 2>&1 | head -10
+  } > "$ROOT/diag.txt"
+  false
+}
 echo "$DBT"
 NOTE="${DBT//'%'/'%25'}"; NOTE="${NOTE//$'\n'/'%0A'}"
 echo "::notice title=Database reader test::$NOTE"
