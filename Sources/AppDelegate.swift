@@ -11,6 +11,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.window?.center()
         NSApp.activate(ignoringOtherApps: true)
         controller.checkProgrammer(nil)
+        let mp = Minipro.shared
+        DispatchQueue.global(qos: .utility).async {
+            ChipDatabase.shared.load(infoic: mp.infoic, logicic: mp.logicic)
+            DispatchQueue.main.async { controller.updateChipInfo() }
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
@@ -59,11 +64,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let chipMenu = NSMenu(title: "Chip")
         chipMenu.addItem(withTitle: "Check Programmer", action: #selector(MainWindowController.checkProgrammer(_:)), keyEquivalent: "k")
         chipMenu.addItem(withTitle: "Search Chips…", action: #selector(MainWindowController.searchChips(_:)), keyEquivalent: "f")
+        chipMenu.addItem(withTitle: "Identify Chip…", action: #selector(MainWindowController.identifyChip(_:)), keyEquivalent: "i")
         chipMenu.addItem(.separator())
         chipMenu.addItem(withTitle: "Read", action: #selector(MainWindowController.readChip(_:)), keyEquivalent: "r")
         chipMenu.addItem(withTitle: "Blank Check", action: #selector(MainWindowController.blankCheck(_:)), keyEquivalent: "b")
         chipMenu.addItem(withTitle: "Verify", action: #selector(MainWindowController.verifyChip(_:)), keyEquivalent: "")
         chipMenu.addItem(withTitle: "Program…", action: #selector(MainWindowController.programChip(_:)), keyEquivalent: "")
+        chipMenu.addItem(withTitle: "Logic Test", action: #selector(MainWindowController.logicTest(_:)), keyEquivalent: "t")
         chipMenu.addItem(.separator())
         chipMenu.addItem(withTitle: "Stop", action: #selector(MainWindowController.stop(_:)), keyEquivalent: ".")
         chipItem.submenu = chipMenu

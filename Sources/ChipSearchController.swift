@@ -11,6 +11,7 @@ final class ChipSearchController: NSObject, NSTableViewDataSource, NSTableViewDe
     private let onDone: (String?) -> Void
     private var searchToken = 0
     private var keepAlive: ChipSearchController?
+    private var fixedTitle: String?
 
     init(initialQuery: String, onDone: @escaping (String?) -> Void) {
         self.onDone = onDone
@@ -20,6 +21,18 @@ final class ChipSearchController: NSObject, NSTableViewDataSource, NSTableViewDe
         build()
         // Search on the base part number, without the @package suffix.
         field.stringValue = initialQuery.components(separatedBy: "@").first ?? ""
+    }
+
+    /// Shows a fixed list to choose from (used by Identify) instead of a search.
+    init(title: String, results: [String], onDone: @escaping (String?) -> Void) {
+        self.onDone = onDone
+        panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 460, height: 420),
+                        styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        fixedTitle = title
+        super.init()
+        self.results = results
+        build()
+        countLabel.stringValue = "\(results.count) matches"
     }
 
     private func build() {
@@ -57,7 +70,16 @@ final class ChipSearchController: NSObject, NSTableViewDataSource, NSTableViewDe
         let buttons = NSStackView(views: [countLabel, NSView(), cancel, ok])
         buttons.orientation = .horizontal
 
-        let stack = NSStackView(views: [field, help, scroll, buttons])
+        var top: [NSView] = [field, help]
+        if let t = fixedTitle {
+            let title = NSTextField(labelWithString: t)
+            title.font = NSFont.boldSystemFont(ofSize: NSFont.systemFontSize)
+            let note = NSTextField(wrappingLabelWithString: "Chips that report this ID. Pick the exact part printed on the chip, then Choose.")
+            note.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+            note.textColor = .secondaryLabelColor
+            top = [title, note]
+        }
+        let stack = NSStackView(views: top + [scroll, buttons])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
@@ -70,7 +92,7 @@ final class ChipSearchController: NSObject, NSTableViewDataSource, NSTableViewDe
             stack.topAnchor.constraint(equalTo: content.topAnchor),
             stack.bottomAnchor.constraint(equalTo: content.bottomAnchor),
         ])
-        for v in [field, help, scroll, buttons] as [NSView] {
+        for v in stack.arrangedSubviews {
             v.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -32).isActive = true
         }
         scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 240).isActive = true
@@ -80,8 +102,14 @@ final class ChipSearchController: NSObject, NSTableViewDataSource, NSTableViewDe
         parent = window
         keepAlive = self
         window.beginSheet(panel, completionHandler: nil)
-        _ = panel.makeFirstResponder(field)
-        if !field.stringValue.isEmpty { search(nil) }
+        if fixedTitle != nil {
+            table.reloadData()
+            if !results.isEmpty { table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false) }
+            _ = panel.makeFirstResponder(table)
+        } else {
+            _ = panel.makeFirstResponder(field)
+            if !field.stringValue.isEmpty { search(nil) }
+        }
     }
 
     @objc private func search(_ sender: Any?) {

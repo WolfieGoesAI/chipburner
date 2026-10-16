@@ -5,10 +5,14 @@ A native Mac app for TL866-series chip programmers (TL866A/CS, TL866II+, T48), b
 no drivers, nothing else to install.
 
 - Runs on macOS 10.14.4 (Mojave) or newer, Intel and Apple silicon
-- Check programmer, search chips, chip info
+- Check programmer, search chips, chip info (type, size, ID shown under the chip name)
+- **Identify**: reads a chip's electronic ID and lists every matching chip in the database
 - Read, blank check, program, verify, erase
-- Hex view of the buffer with byte-sum and CRC32
-- Open and save raw binary and Intel hex
+- **Logic Test** for 74xx/40xx logic ICs, with pass/fail and the failing vectors in the log
+- **Memory** selector for microcontrollers: code, data EEPROM, config/fuses, user row, calibration
+- **GAL/PLD** support: read to and program from `.jed` fuse files
+- Hex view of the buffer with byte-sum and CRC32; text view for `.jed` and fuse files
+- Open and save raw binary, Intel hex, `.jed` and `.conf`
 
 ## Getting the app (GitHub builds it)
 
@@ -31,6 +35,12 @@ To make a versioned download on the Releases page, push a tag such as `v0.1.0`.
    (Known case: TL866 firmware 03.2.86 gave `LIBUSB_ERROR_OVERFLOW` on Mojave; 03.2.81 worked.)
 3. **Search…** for your chip (e.g. `27C256`) and pick the exact package, such as `@DIP28`.
 4. **Read** a known-good chip first and compare the checksum with what you expect.
+
+## Identify
+
+Choose **Identify…**, pick the chip family (28-pin or 32-pin UV EPROM, or "same type as" the chip already
+selected), and ChipBurner reads the ID and offers the matching parts. Chips without an electronic ID,
+such as NMOS 2716/2732, still have to be picked with **Search…**.
 
 ## Options
 
