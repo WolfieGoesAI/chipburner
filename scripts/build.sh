@@ -170,7 +170,7 @@ IDDOC="$(grep -E -i -B1 -A3 'auto|detect|chip id|signature|id mismatch|-x,|-y,' 
 NOTE="${IDDOC//'%'/'%25'}"; NOTE="${NOTE//$'\n'/'%0A'}"
 echo "::notice title=minipro ID and auto-detect docs::$NOTE"
 IC="$APP/Contents/Resources/minipro/infoic.xml"
-IDS="$(for n in 'AM27C256@DIP28' 'M27C256B@DIP28' 'M27C512@DIP28' 'AM27C010@DIP32' 'M27C801@DIP32' 'AT28C256@DIP28' 'SST39SF040@DIP32'; do grep -F -A10 "\"$n" "$IC" | head -11 | tr -s ' \t' ' ' | tr '\n' ' ' | cut -c1-420; echo; done)"
+IDS="$(for n in 'AM27C256@DIP28' 'M27C256B@DIP28' 'M27C512@DIP28' 'AM27C010@DIP32' 'M27C801@DIP32' 'AT28C256@DIP28' 'SST39SF040@DIP32' 'W27C512@DIP28'; do printf '%s: ' "$n"; grep -F -A40 "\"$n" "$IC" | sed -n '1,/\/>/p' | grep -o -E '(chip_id[a-z_]*|opts[0-9]?|flags)="[^"]*"' | tr '\n' ' '; echo; done)"
 NOTE="${IDS//'%'/'%25'}"; NOTE="${NOTE//$'\n'/'%0A'}"
 echo "::notice title=infoic entries for common chips::$NOTE"
 
