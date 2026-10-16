@@ -141,8 +141,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
 
         programmerLabel.lineBreakMode = .byTruncatingTail
         programmerLabel.isSelectable = true
-        let progRow = row([bold("Programmer:"), programmerLabel, spacer(),
-                           button("Hardware…", #selector(hardwareMenu(_:)))])
+        let progRow = row([bold("Programmer:"), programmerLabel, spacer()])
 
         chipField.placeholderString = "e.g. AM27C256@DIP28 – use Search or Ident EPROM"
         chipField.delegate = self
@@ -225,11 +224,29 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
 
         bufferLabel.lineBreakMode = .byTruncatingMiddle
         bufferLabel.isSelectable = true
+        let saveHex = button("Save .hex…", #selector(saveIntelHex(_:)))
         let fileRow = row([bufferLabel, spacer(),
                            button("Open…", #selector(openFile(_:))),
                            button("JED → Equations…", #selector(decodeJED(_:))),
                            button("Save .bin…", #selector(saveBinary(_:))),
-                           button("Save .hex…", #selector(saveIntelHex(_:)))])
+                           saveHex])
+
+        // Hardware… sits at the right edge under Stop and above Save .hex…, centred between them.
+        let hardware = button("Hardware…", #selector(hardwareMenu(_:)))
+        let settingsBlock = NSView()
+        for v in [grid, hardware] as [NSView] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+            settingsBlock.addSubview(v)
+        }
+        NSLayoutConstraint.activate([
+            grid.leadingAnchor.constraint(equalTo: settingsBlock.leadingAnchor),
+            grid.topAnchor.constraint(equalTo: settingsBlock.topAnchor),
+            grid.bottomAnchor.constraint(equalTo: settingsBlock.bottomAnchor),
+            grid.trailingAnchor.constraint(lessThanOrEqualTo: hardware.leadingAnchor, constant: -12),
+            hardware.trailingAnchor.constraint(equalTo: settingsBlock.trailingAnchor),
+            hardware.centerYAnchor.constraint(equalTo: settingsBlock.centerYAnchor),
+            hardware.widthAnchor.constraint(equalTo: saveHex.widthAnchor),
+        ])
 
         let editRow = buildEditRow()
         let bufferView = buildBufferEditor()
@@ -245,7 +262,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         let logButton = button("Log", #selector(toggleLog(_:)))
         let statusRow = row([statusLabel, spacer(), progress, logButton])
 
-        let rows: [NSView] = [progRow, chipRow, chipInfoLabel, actionRow, grid, fileRow, editRow, bufferView, statusRow]
+        let rows: [NSView] = [progRow, chipRow, chipInfoLabel, actionRow, settingsBlock, fileRow, editRow, bufferView, statusRow]
         let stack = NSStackView(views: rows)
         stack.orientation = .vertical
         stack.alignment = .leading
