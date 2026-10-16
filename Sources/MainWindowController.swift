@@ -144,14 +144,23 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         let progRow = row([bold("Programmer:"), programmerLabel, spacer(),
                            button("Check Programmer", #selector(checkProgrammer(_:)))])
 
-        chipField.placeholderString = "e.g. AM27C256@DIP28 – use Search or Identify"
+        chipField.placeholderString = "e.g. AM27C256@DIP28 – use Search or Ident EPROM"
         chipField.delegate = self
         chipField.widthAnchor.constraint(greaterThanOrEqualToConstant: 300).isActive = true
-        let chipRow = row([bold("Chip:"), chipField,
-                           button("Search…", #selector(searchChips(_:))),
-                           button("Identify…", #selector(identifyChip(_:))),
-                           button("Chip Info", #selector(chipInfo(_:))),
-                           configButton, spacer()])
+        let logic = button("Logic Test", #selector(logicTest(_:)))
+        let logicID = button("Ident Logic…", #selector(identifyLogic(_:)))
+        // Two rows so Ident Logic sits under Ident EPROM and Logic Test under Chip Info.
+        let chipRow = NSGridView(views: [
+            [bold("Chip:"), chipField, button("Search…", #selector(searchChips(_:))),
+             button("Ident EPROM…", #selector(identifyChip(_:))), button("Chip Info", #selector(chipInfo(_:))), configButton, NSView()],
+            [NSView(), NSView(), NSView(), logicID, logic, NSView(), NSView()],
+        ])
+        chipRow.rowSpacing = 2
+        chipRow.columnSpacing = 8
+        chipRow.rowAlignment = .firstBaseline
+        for c in 2...5 { chipRow.column(at: c).xPlacement = .fill }   // equal-width buttons per column
+        chipRow.column(at: 1).xPlacement = .fill
+        chipField.setContentHuggingPriority(.defaultHigh, for: .horizontal)
 
         chipInfoLabel.textColor = .secondaryLabelColor
         chipInfoLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
@@ -163,11 +172,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         let verify = button("Verify", #selector(verifyChip(_:)))
         let erase = button("Erase", #selector(eraseChip(_:)))
         eraseButton = erase
-        let logic = button("Logic Test", #selector(logicTest(_:)))
-        let logicID = button("Identify Logic…", #selector(identifyLogic(_:)))
         stopButton = button("Stop", #selector(stop(_:)))
         actionButtons = [read, blank, program, verify, erase, logic, logicID]
-        let actionRow = row([read, blank, program, verify, erase, logic, logicID, spacer(), stopButton])
+        let actionRow = row([read, blank, program, verify, erase, spacer(), stopButton])
 
         memoryTypes.forEach { memoryPopup.addItem(withTitle: $0.title) }
         ["ZIF socket", "ICSP – power from programmer", "ICSP – board has its own power"].forEach { connectionPopup.addItem(withTitle: $0) }
@@ -242,7 +249,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
-        stack.setCustomSpacing(4, after: chipRow)
+        stack.setCustomSpacing(6, after: chipRow)
         stack.setCustomSpacing(6, after: fileRow)
         stack.setCustomSpacing(6, after: editRow)
         stack.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 12, right: 16)
@@ -522,7 +529,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
 
     private func requireChip() -> Bool {
         if chip.isEmpty {
-            showError("Choose a chip first.", "Type its exact minipro name, or use Search… or Identify….")
+            showError("Choose a chip first.", "Type its exact minipro name, or use Search… or Ident EPROM….")
             return false
         }
         return true
@@ -773,7 +780,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         let last = UserDefaults.standard.integer(forKey: "identifyChoice")
         if last < choices.count { popup.selectItem(at: last) }
         let a = NSAlert()
-        a.messageText = "Identify chip"
+        a.messageText = "Ident EPROM"
         a.informativeText = """
             Put the chip in the socket (bottom-aligned, pin 1 at the lever end) and choose what kind of chip it is. \
             ChipBurner reads its electronic ID and lists the chips that match.
@@ -1054,7 +1061,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         if let i = counts.firstIndex(of: UserDefaults.standard.integer(forKey: "logicPins")) { popup.selectItem(at: i) }
         else if let i = counts.firstIndex(of: 14) { popup.selectItem(at: i) }
         let a = NSAlert()
-        a.messageText = "Identify logic chip"
+        a.messageText = "Ident Logic"
         a.informativeText = "Put the chip in the socket bottom-aligned with pin 1 at the lever end, and choose its pin count. ChipBurner runs the 5 V test of every chip type with ground on the last pin of the first row and supply on the last pin, and lists the ones it passes. This takes about a second per type; Stop ends it early."
         a.accessoryView = popup
         a.addButton(withTitle: "Start")
