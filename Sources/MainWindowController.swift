@@ -1170,7 +1170,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         }
         var base = ["-p", chip] + connectionArgs
         if skipID.state == .on { base.append("-y") }
-        let c = ConfigWindowController(chip: chip, config: config, baseArgs: base) { [weak self] title, args, done in
+        let info = chipDetails
+        let c = ConfigWindowController(chip: chip, config: config, wordSize: info?.wordSize ?? 1,
+                                       lockWriteOnly: info?.lockBitWriteOnly ?? false, baseArgs: base) { [weak self] title, args, done in
             guard let self = self else { return }
             if self.isBusy { NSSound.beep(); return }
             self.runJob(title, args, then: done)

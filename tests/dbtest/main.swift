@@ -85,7 +85,8 @@ for n in ["PIC16F84A", "PIC16F628A", "ATMEGA8A", "ATMEGA88PA", "ATTINY2313", "AT
     } else { print("  \(n): config '\(i.configName)' – none found") }
 }
 expect(db.info(for: "ATMEGA8A", programmer: "TL866A").flatMap { db.config(for: $0) }.map { !$0.fuses.isEmpty } == true, "ATMEGA8A has fuses")
-expect(db.info(for: "PIC16F84A", programmer: "TL866A").flatMap { db.config(for: $0) }.map { !$0.isEmpty } == true, "PIC16F84A has a config layout")
+expect(db.info(for: "PIC16F84A", programmer: "TL866A").flatMap { db.config(for: $0) }.map { $0.userIDs > 0 && !$0.fuses.isEmpty } == true, "PIC16F84A has a config word and user IDs")
+expect(db.info(for: "PIC16F84A", programmer: "TL866A")?.wordSize == 2 && db.info(for: "ATMEGA8A", programmer: "TL866A")?.wordSize == 1, "word size: PIC 2 bytes, AVR 1 byte")
 
 let spi = SPIAutodetect.parse("Found TL866A 03.2.86 (0x256)\nDevice code: 12345\nAutodetecting device (ID:0xEF4016)\n2 device(s) found.\nW25Q32BV@SOIC8\nW25Q32FV@SOIC8\n")
 expect(spi.id == 0xEF4016 && spi.names == ["W25Q32BV@SOIC8", "W25Q32FV@SOIC8"], "SPI autodetect output parsed: ID and 2 names")

@@ -26,7 +26,10 @@ final class ConfigWindowController: NSWindowController {
     private var retainSelf: ConfigWindowController?
     private let status = NSTextField(labelWithString: "Values shown are the database defaults until you read the chip.")
 
-    init(chip: String, config: ChipConfig, baseArgs: [String], run: @escaping Runner) {
+    private let lockWriteOnly: Bool
+
+    init(chip: String, config: ChipConfig, wordSize: Int, lockWriteOnly: Bool, baseArgs: [String], run: @escaping Runner) {
+        self.lockWriteOnly = lockWriteOnly
         self.chip = chip
         self.baseArgs = baseArgs
         self.run = run
@@ -37,7 +40,7 @@ final class ConfigWindowController: NSWindowController {
         w.isReleasedWhenClosed = false
         w.minSize = NSSize(width: 480, height: 300)
         super.init(window: w)
-        let wide = (config.fuses + config.locks).contains { $0.mask > 0xFF || $0.defaultValue > 0xFF }
+        let wide = wordSize == 2 || (config.fuses + config.locks).contains { $0.mask > 0xFF || $0.defaultValue > 0xFF }
         fields[.fuses] = config.fuses.map { Field(name: $0.name, mask: $0.mask, defaultValue: $0.defaultValue, wide: wide) }
         fields[.uid] = (0..<config.userIDs).map { Field(name: "user_id\($0)", mask: wide ? 0xFFFF : 0xFF, defaultValue: wide ? 0xFFFF : 0xFF, wide: wide) }
         fields[.lock] = config.locks.map { Field(name: $0.name, mask: $0.mask, defaultValue: $0.defaultValue, wide: wide) }
@@ -93,6 +96,10 @@ final class ConfigWindowController: NSWindowController {
             for (i, b) in [read, write, defaults].enumerated() {
                 b.bezelStyle = .rounded
                 b.tag = Section.allCases.firstIndex(of: section)! * 10 + i
+            }
+            if section == .lock && lockWriteOnly {
+                read.isEnabled = false
+                read.toolTip = "This chip's lock bits can be written but not read back."
             }
             let spacer = NSView()
             spacer.setContentHuggingPriority(NSLayoutConstraint.Priority(rawValue: 1), for: .horizontal)
@@ -201,7 +208,7 @@ final class ConfigWindowController: NSWindowController {
 
     // MARK: Actions
 
-    private func read(_ sections: [Section], filter: [String]) {
+    private func read(_ sections: [Section], filter: [String], then next: (() -> Void)? = nil) {
         let url = tempURL("config-read.conf")
         try? FileManager.default.removeItem(at: url)
         let what = sections.map { $0.rawValue.lowercased() }.joined(separator: ", ")
@@ -215,6 +222,7 @@ final class ConfigWindowController: NSWindowController {
             let n = self.apply(ConfigText.parse(text), to: sections)
             self.status.stringValue = "Read \(n) value(s) from the chip."
             self.status.textColor = .labelColor
+            next?()
         }
     }
 
@@ -224,6 +232,16 @@ final class ConfigWindowController: NSWindowController {
     }
 
     @objc private func readAll(_ sender: Any?) {
+        if lockWriteOnly && fields[.lock]?.isEmpty == false {
+            // minipro refuses a lock read on these chips, so read the other sections one by one.
+            let readable = activeSections.filter { $0 != .lock }
+            guard let first = readable.first else { return }
+            read([first], filter: [first.flag]) { [weak self] in
+                guard let self = self, readable.count > 1 else { return }
+                self.read([readable[1]], filter: [readable[1].flag])
+            }
+            return
+        }
         read(activeSections, filter: [])
     }
 

@@ -32,6 +32,10 @@ struct ChipInfo {
     var hasFlags = false
     /// nil when the database entry carries no flags.
     var canErase: Bool? { hasFlags ? (flags & 0x10) != 0 : nil }
+    /// Lock bits can be written but not read back (MP_LOCK_BIT_WRITE_ONLY).
+    var lockBitWriteOnly: Bool { flags & 0x00040000 != 0 }
+    /// 16-bit program words (MP_DATA_ORG), as on PIC: fuses are shown with four hex digits.
+    var wordSize: Int { flags & 0x03000000 == 0x01000000 ? 2 : 1 }
     // Logic chips only:
     var group: String = ""        // names sharing the same test vectors, e.g. "7400,7437,74132"
     var voltage: String = ""      // test supply, e.g. "5V"
@@ -224,7 +228,9 @@ final class ChipDatabase {
             case "config":
                 guard let n = attr["name"] else { return }
                 configKey = database + "|" + n
-                configs[configKey!] = ChipConfig()
+                var c = ChipConfig()
+                c.userIDs = min(8, Int(hex(attr["num_uids"])))
+                configs[configKey!] = c
             case "fuses", "locks":
                 if configKey != nil { configSection = elementName }
             case "fuse", "lock":

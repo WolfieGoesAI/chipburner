@@ -194,15 +194,9 @@ GT="$("$WORK/galtest" "$ROOT/tests/gal/cases" 2>&1)" || { echo "$GT"; note "JED 
 echo "$GT"
 note "JED decoder test" "$(grep -v '^;' <<<"$GT" | tail -40)"
 
-log "Diagnostics: config pages"
+# Extra diagnostics: add diag "title" "text" lines here; the workflow prints them as notices.
 DIAG=""
 diag() { DIAG+="### $1"$'\n'"$2"$'\n\n'; }
-M="$WORK/src/minipro-git/src/main.c"
-X="$APP/Contents/Resources/minipro/infoic.xml"
-D="$WORK/src/minipro-git/src/database.c"
-diag "database.c num_uids" "$(grep -n -B6 -A6 -E 'num_uids|uid' "$D" | head -120)"
-diag "database.c flag masks" "$(grep -n -E '#define MP_[A-Z_]+[[:space:]]+0x' "$D" | head -40)"
-diag "PIC16F84A ic entry" "$(grep -n -A22 'name="PIC16F84A' "$X" | head -24 | tr -s ' ')"
 printf '%s' "$DIAG" > "$ROOT/diag.txt"
 
 # ---------- sign and package ----------
