@@ -245,7 +245,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             grid.trailingAnchor.constraint(lessThanOrEqualTo: hardware.leadingAnchor, constant: -12),
             hardware.trailingAnchor.constraint(equalTo: settingsBlock.trailingAnchor),
             hardware.centerYAnchor.constraint(equalTo: settingsBlock.centerYAnchor),
-            hardware.widthAnchor.constraint(equalTo: saveHex.widthAnchor),
         ])
 
         let editRow = buildEditRow()
@@ -284,6 +283,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         for v in rows {
             v.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -32).isActive = true
         }
+        // Only now do Hardware… and Save .hex… share a superview chain, so the width link can be made.
+        hardware.widthAnchor.constraint(equalTo: saveHex.widthAnchor).isActive = true
         stack.setHuggingPriority(.defaultLow, for: .vertical)
         bufferView.setContentHuggingPriority(.defaultLow, for: .vertical)
     }
@@ -1280,6 +1281,31 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
                 self.showError("Could not save.", error.localizedDescription)
             }
         }
+    }
+
+    // MARK: Smoke test
+
+    /// Run by the build (CHIPBURNER_SMOKETEST=1): reports whether the window came up and where the
+    /// main buttons ended up, so layout problems show in the build log.
+    func smokeReport() -> Bool {
+        guard let w = window, let content = w.contentView else { print("SMOKE FAIL: no window"); return false }
+        content.layoutSubtreeIfNeeded()
+        var buttons: [String: NSRect] = [:]
+        func walk(_ v: NSView) {
+            if let b = v as? NSButton, !b.title.isEmpty, b.superview != nil {
+                buttons[b.title] = b.convert(b.bounds, to: nil)
+            }
+            v.subviews.forEach(walk)
+        }
+        walk(content)
+        print("SMOKE window visible=\(w.isVisible) frame=\(NSStringFromRect(w.frame)) content=\(NSStringFromRect(content.frame)) buttons=\(buttons.count)")
+        for t in ["Read", "Stop", "Hardware…", "Save .hex…", "Ident EPROM…", "Ident Logic…", "Chip Info", "Logic Test", "Auto…", "Voltages…", "Settings…"] {
+            if let r = buttons[t] { print(String(format: "SMOKE %@ x=%.0f..%.0f y=%.0f..%.0f", t, r.minX, r.maxX, r.minY, r.maxY)) }
+            else { print("SMOKE missing button: \(t)") }
+        }
+        let ok = w.isVisible && buttons.count > 20 && !content.subviews.isEmpty
+        print(ok ? "SMOKE OK" : "SMOKE FAIL")
+        return ok
     }
 
     // MARK: Hardware

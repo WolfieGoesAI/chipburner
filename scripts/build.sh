@@ -200,6 +200,17 @@ diag() { DIAG+="### $1"$'\n'"$2"$'\n\n'; }
 diag "Fuses & Locks families" "$(grep -E '^(FL|FUSES)' <<<"$DBT")"
 printf '%s' "$DIAG" > "$ROOT/diag.txt"
 
+log "Smoke test: launch the app and check that the window comes up"
+CHIPBURNER_SMOKETEST=1 "$APP/Contents/MacOS/ChipBurner" > "$WORK/smoke.log" 2>&1 &
+SMOKE_PID=$!
+for _ in $(seq 1 60); do kill -0 "$SMOKE_PID" 2>/dev/null || break; sleep 1; done
+kill "$SMOKE_PID" 2>/dev/null || true
+SMOKE="$(cat "$WORK/smoke.log")"
+echo "$SMOKE"
+diag "App launch smoke test" "$(grep -v -i 'overridden database' <<<"$SMOKE" | tail -40)"
+grep -q "SMOKE OK" <<<"$SMOKE" || { echo "ERROR: the app window did not come up"; printf '%s' "$DIAG" > "$ROOT/diag.txt"; false; }
+printf '%s' "$DIAG" > "$ROOT/diag.txt"
+
 # ---------- sign and package ----------
 log "Ad-hoc signing"
 codesign --force --sign - "$APP/Contents/MacOS/minipro"

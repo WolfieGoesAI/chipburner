@@ -10,6 +10,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.showWindow(nil)
         controller.window?.center()
         NSApp.activate(ignoringOtherApps: true)
+        if ProcessInfo.processInfo.environment["CHIPBURNER_SMOKETEST"] != nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                let ok = controller.smokeReport()
+                fflush(stdout)
+                exit(ok ? 0 : 1)
+            }
+            return
+        }
         controller.checkProgrammer(nil)
         let mp = Minipro.shared
         DispatchQueue.global(qos: .utility).async {
