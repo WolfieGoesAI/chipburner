@@ -104,7 +104,7 @@ final class ChipDatabase {
             let d = Delegate()
             parser.delegate = d
             if !parser.parse() {
-                errors.append("\(url.lastPathComponent): \(parser.parserError?.localizedDescription ?? "parse error")")
+                errors.append("\(url.lastPathComponent): \(parser.parserError?.localizedDescription ?? "parse error") at line \(parser.lineNumber), column \(parser.columnNumber)")
             }
             entries += d.entries
             for (k, v) in d.configs { configs[k] = v }

@@ -197,10 +197,12 @@ DBT="$("$WORK/dbtest" "$APP/Contents/Resources/minipro/infoic.xml" "$APP/Content
     echo "### PIC16F84A in infoic"; grep -n -i -B3 -A5 'PIC16F84A' "$X" | head -30 | tr -s ' '
     echo "### database sections"; grep -n -E '<database|type="INFOIC' "$X" | head
     echo "### dbtest header"; head -8 <<<"$DBT"
+    EL="$(grep -o 'at line [0-9]*' <<<"$DBT" | head -1 | grep -o '[0-9]*')"
+    if [ -n "$EL" ]; then echo "### infoic.xml around line $EL"; sed -n "$((EL-12)),$((EL+3))p" "$X" | cat -v | cut -c1-300; fi
     L1="$(grep -n 'type="INFOIC"' "$X" | head -1 | cut -d: -f1)"
     echo "### TL866A section: ic count"; sed -n "${L1},\$p" "$X" | grep -c '<ic'
     echo "### TL866A section ATMEGA8 / PIC16F84 / 27C256 names"; sed -n "${L1},\$p" "$X" | grep -E 'name="[^"]*(ATMEGA8|PIC16F84|27C256)' | head -12 | tr -s ' '
-    echo "### TL866A section first entries"; sed -n "${L1},\$((L1+60))p" "$X" | grep -E 'name=|type=' | head -12 | tr -s ' '
+    echo "### TL866A section first entries"; sed -n "${L1},$((L1+60))p" "$X" | grep -E 'name=|type=' | head -12 | tr -s ' '
     for q in TL866A TL866II; do echo "### minipro -q $q -L ATMEGA8"; "$APP/Contents/MacOS/minipro" --infoic "$X" --logicic "$APP/Contents/Resources/minipro/logicic.xml" -q $q -L ATMEGA8 2>&1 | grep -v overridden | head -8; done
     echo "### minipro -q TL866A -L 27C256"; "$APP/Contents/MacOS/minipro" --infoic "$X" --logicic "$APP/Contents/Resources/minipro/logicic.xml" -q TL866A -L 27C256 2>&1 | grep -v overridden | head -8
     echo "### avr_15 definition"; grep -n -B4 -A30 'name="avr_15"' "$X" | head -50 | tr -s ' '

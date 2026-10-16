@@ -19,6 +19,8 @@ for n in ["AM27C256@DIP28", "M27C512@DIP28", "GAL16V8", "7400", "ATMEGA328P@DIP2
     print("  \(n): \(db.info(for: n, programmer: "TL866A")?.summary ?? "not found")")
 }
 let am = db.info(for: "AM27C256@DIP28", programmer: "TL866A")
+expect(db.loadError == nil, "the whole database file parses")
+expect(db.databaseName(for: "TL866A") != nil, "the TL866A section is present")
 expect(db.count > 1000, "database has entries")
 expect(am != nil && am!.kind == .memory && am!.codeSize == 0x8000, "AM27C256@DIP28 is a 32 KB memory chip")
 expect(db.info(for: "7400", programmer: "TL866A")?.kind == .logic, "7400 is a logic chip")
@@ -76,7 +78,7 @@ for n in ["X28C256", "AT28C256", "W27C512@DIP28", "AM27C256@DIP28", "GAL16V8", "
 expect(db.info(for: "GAL16V8", programmer: "TL866A")?.canErase == true, "GAL16V8 has an erase command")
 expect(db.info(for: "AM27C256@DIP28", programmer: "TL866A")?.canErase == false, "AM27C256 (UV EPROM) has no erase command")
 
-for n in ["PIC16F84A@DIP18", "PIC16F628A@DIP18", "ATMEGA8A@DIP28", "ATMEGA88PA@DIP28", "ATTINY2313@DIP20", "AT89C2051@DIP20", "AT89S52@DIP40"] {
+for n in ["PIC16F84A", "PIC16F628A", "ATMEGA8A", "ATMEGA88PA", "ATTINY2313", "AT89C2051", "AT89S52"] {
     guard let i = db.info(for: n, programmer: "TL866A") else { print("  \(n): not found"); continue }
     if let c = db.config(for: i) {
         let f = c.fuses.map { String(format: "%@ mask %04X def %04X", $0.name, $0.mask, $0.defaultValue) }
@@ -84,9 +86,9 @@ for n in ["PIC16F84A@DIP18", "PIC16F628A@DIP18", "ATMEGA8A@DIP28", "ATMEGA88PA@D
         print("  \(n) config \(i.configName): fuses [\(f.joined(separator: "; "))] locks [\(l.joined(separator: "; "))] userIDs \(c.userIDs) other \(c.otherSections)")
     } else { print("  \(n): config '\(i.configName)' – none found") }
 }
-expect(db.info(for: "ATMEGA8A@DIP28", programmer: "TL866A").flatMap { db.config(for: $0) }.map { !$0.fuses.isEmpty } == true, "ATMEGA8A has fuses")
-expect(db.info(for: "PIC16F84A@DIP18", programmer: "TL866A").flatMap { db.config(for: $0) }.map { $0.userIDs > 0 && !$0.fuses.isEmpty } == true, "PIC16F84A has a config word and user IDs")
-expect(db.info(for: "PIC16F84A@DIP18", programmer: "TL866A")?.wordSize == 2 && db.info(for: "ATMEGA8A@DIP28", programmer: "TL866A")?.wordSize == 1, "word size: PIC 2 bytes, AVR 1 byte")
+expect(db.info(for: "ATMEGA8A", programmer: "TL866A").flatMap { db.config(for: $0) }.map { !$0.fuses.isEmpty } == true, "ATMEGA8A has fuses")
+expect(db.info(for: "PIC16F84A", programmer: "TL866A").flatMap { db.config(for: $0) }.map { $0.userIDs > 0 && !$0.fuses.isEmpty } == true, "PIC16F84A has a config word and user IDs")
+expect(db.info(for: "PIC16F84A", programmer: "TL866A")?.wordSize == 2 && db.info(for: "ATMEGA8A", programmer: "TL866A")?.wordSize == 1, "word size: PIC 2 bytes, AVR 1 byte")
 
 let spi = SPIAutodetect.parse("Found TL866A 03.2.86 (0x256)\nDevice code: 12345\nAutodetecting device (ID:0xEF4016)\n2 device(s) found.\nW25Q32BV@SOIC8\nW25Q32FV@SOIC8\n")
 expect(spi.id == 0xEF4016 && spi.names == ["W25Q32BV@SOIC8", "W25Q32FV@SOIC8"], "SPI autodetect output parsed: ID and 2 names")
