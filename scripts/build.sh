@@ -177,6 +177,16 @@ echo "::notice title=infoic entries for common chips::$NOTE"
 log "Smoke test: chip database search for 27C256"
 DBARGS=(--infoic "$APP/Contents/Resources/minipro/infoic.xml")
 [ -f "$APP/Contents/Resources/minipro/logicic.xml" ] && DBARGS+=(--logicic "$APP/Contents/Resources/minipro/logicic.xml")
+# v0.2 diagnostics
+note() { local t="$1" b="$2"; b="${b//'%'/'%25'}"; b="${b//$'\n'/'%0A'}"; echo "::notice title=$t::$b"; }
+note "man: -T -c -D" "$(grep -E -A6 '^[[:space:]]*(-[TcD],|-c <)' <<<"$MANTXT" | head -40 | tr -s ' ')"
+note "man: config fuses jed logic" "$(grep -E -i -B1 -A4 'fuse|\.jed|jedec|logic test|config' <<<"$MANTXT" | head -60 | tr -s ' ')"
+note "infoic structure" "$(head -c 1500 "$IC"; echo; grep -n -o -E '<(database|manufacturer|ic)[^>]{0,80}' "$IC" | head -12)"
+note "infoic GAL16V8 entry" "$(grep -F -A40 '"GAL16V8' "$IC" | sed -n '1,/\/>/p' | tr -s ' \t' ' ' | head -30)"
+LIC="$APP/Contents/Resources/minipro/logicic.xml"
+note "logicic structure" "$(head -c 1200 "$LIC"; echo; grep -F -A8 '"7400' "$LIC" | head -12)"
+note "logic search 7400" "$("$APP/Contents/MacOS/minipro" "${DBARGS[@]}" -q TL866A -L 7400 2>&1 | head -8)"
+
 SEARCH="$("$APP/Contents/MacOS/minipro" "${DBARGS[@]}" -q TL866A -L 27C256 2>&1 || true)"
 echo "$SEARCH" | head -20
 NOTE="$(head -15 <<<"$SEARCH")"; NOTE="${NOTE//'%'/'%25'}"; NOTE="${NOTE//$'\n'/'%0A'}"
