@@ -95,6 +95,28 @@ let cfg = ConfigText.parse("lfuse = 0xe1\nhfuse = 0xd9\nlock = 0x3f\nconf_word =
 expect(cfg == ["lfuse": 0xE1, "hfuse": 0xD9, "lock": 0x3F, "conf_word": 0x3FFB, "user_id0": 0x0001], "config text parsed")
 expect(ConfigText.line("lock", 0x3F, wide: false) == "lock = 0x3f" && ConfigText.line("conf_word", 0x3FFB, wide: true) == "conf_word = 0x3ffb", "config text written in minipro's format")
 
+// Which chips have fuses / user ID / lock bits (the Fuses & Locks window), by family.
+var families: [String: (count: Int, f: Bool, u: Bool, l: Bool, kinds: Set<String>, examples: [String])] = [:]
+for kind in [ChipInfo.Kind.mcu, .memory, .pld, .sram, .unknown] {
+    for n in db.names(of: kind, programmer: "TL866A") {
+        guard let i = db.info(for: n, programmer: "TL866A"), let c = db.config(for: i), !c.isEmpty else { continue }
+        let base = n.split(separator: "@")[0].uppercased()
+        let letters = String(base.prefix { $0.isLetter })
+        var fam = letters
+        if letters.count <= 3, let r = base.range(of: "^[A-Z]+[0-9]+[A-Z]*", options: .regularExpression) { fam = String(base[r]) }
+        var e = families[fam] ?? (0, false, false, false, [], [])
+        e.count += 1; e.f = e.f || !c.fuses.isEmpty; e.u = e.u || c.userIDs > 0; e.l = e.l || !c.locks.isEmpty
+        e.kinds.insert(kind.label)
+        if e.examples.count < 4 && !e.examples.contains(base) { e.examples.append(base) }
+        families[fam] = e
+    }
+}
+print("FUSES-AND-LOCKS families (TL866A): \(families.count), chips: \(families.values.map { $0.count }.reduce(0, +))")
+for (k, v) in families.sorted(by: { $0.value.count > $1.value.count }) {
+    let s = [v.f ? "fuses" : nil, v.u ? "user ID" : nil, v.l ? "lock" : nil].compactMap { $0 }.joined(separator: "+")
+    print("FL \(k): \(v.count) [\(s)] \(v.kinds.sorted().joined(separator: "/")) e.g. \(v.examples.joined(separator: ", "))")
+}
+
 let plds = db.names(of: .pld, programmer: "TL866A")
 print("  PLDs for TL866A (\(plds.count)): \(plds.joined(separator: " "))")
 
