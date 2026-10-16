@@ -142,7 +142,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         programmerLabel.lineBreakMode = .byTruncatingTail
         programmerLabel.isSelectable = true
         let progRow = row([bold("Programmer:"), programmerLabel, spacer(),
-                           button("Check Programmer", #selector(checkProgrammer(_:)))])
+                           button("Hardware…", #selector(hardwareMenu(_:)))])
 
         chipField.placeholderString = "e.g. AM27C256@DIP28 – use Search or Ident EPROM"
         chipField.delegate = self
@@ -172,7 +172,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         let verify = button("Verify", #selector(verifyChip(_:)))
         let erase = button("Erase", #selector(eraseChip(_:)))
         eraseButton = erase
-        let autoBurn = button("Auto Burn…", #selector(autoBurn(_:)))
+        let autoBurn = button("Auto…", #selector(autoBurn(_:)))
         stopButton = button("Stop", #selector(stop(_:)))
         actionButtons = [read, blank, program, verify, erase, autoBurn, logic, logicID]
         let actionRow = row([read, blank, program, verify, erase, autoBurn, spacer(), stopButton])
@@ -250,7 +250,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
+        // Equal gaps above and below the chip description, so it sits midway between the chip rows and Read.
         stack.setCustomSpacing(6, after: chipRow)
+        stack.setCustomSpacing(6, after: chipInfoLabel)
         stack.setCustomSpacing(6, after: fileRow)
         stack.setCustomSpacing(6, after: editRow)
         stack.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 12, right: 16)
@@ -845,7 +847,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     private func runIdentify(reference ref: String) {
         let programmer = Minipro.shared.programmerType
         guard let refInfo = ChipDatabase.shared.info(for: ref, programmer: programmer) else {
-            showError("\(ref) isn't in the \(programmer) database.", "Pick another reference or press Check Programmer first.")
+            showError("\(ref) isn't in the \(programmer) database.", "Pick another reference, or use Hardware… ▸ Check Programmer first.")
             return
         }
         runJob("Read ID", ["-p", ref, "-D", "-y"]) { [weak self] _, output in
@@ -1259,6 +1261,59 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
                 self.log("Saved \(url.lastPathComponent).")
             } catch {
                 self.showError("Could not save.", error.localizedDescription)
+            }
+        }
+    }
+
+    // MARK: Hardware
+
+    /// Hardware… : check which programmer is connected, or run its self-test.
+    @objc func hardwareMenu(_ sender: Any?) {
+        guard let w = window, !isBusy else { return }
+        let a = NSAlert()
+        a.messageText = "Hardware"
+        a.informativeText = """
+            Check Programmer finds the connected programmer and shows its model, firmware and serial number.
+
+            Test Programmer runs the programmer's own hardware self-test of its pin drivers and voltages. \
+            Take any chip out of the socket and disconnect any ICSP cable first.
+            """
+        a.addButton(withTitle: "Check Programmer")
+        a.addButton(withTitle: "Test Programmer")
+        a.addButton(withTitle: "Cancel")
+        a.beginSheetModal(for: w) { [weak self] resp in
+            guard let self = self else { return }
+            switch resp {
+            case .alertFirstButtonReturn: self.checkProgrammer(nil)
+            case .alertSecondButtonReturn: self.testProgrammer(nil)
+            default: break
+            }
+        }
+    }
+
+    /// minipro -t: the programmer's hardware self-test (needs an empty socket).
+    @objc func testProgrammer(_ sender: Any?) {
+        guard let w = window, !isBusy else { return }
+        let a = NSAlert()
+        a.messageText = "Is the socket empty?"
+        a.informativeText = "The self-test drives every socket pin and switches the programming voltages. Remove any chip from the ZIF socket and unplug the ICSP cable before you start."
+        a.addButton(withTitle: "Start Self-Test")
+        a.addButton(withTitle: "Cancel")
+        a.beginSheetModal(for: w) { [weak self] resp in
+            guard let self = self, resp == .alertFirstButtonReturn else { return }
+            self.runJob("Programmer self-test", ["-t"]) { [weak self] ok, output in
+                guard let self = self else { return }
+                let lines = output.components(separatedBy: .newlines)
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                    .filter { !$0.isEmpty && !$0.contains("overridden database") }
+                let problems = lines.filter { $0.range(of: "error|fail|short|overcurrent|bad", options: [.regularExpression, .caseInsensitive]) != nil }
+                let summary = lines.suffix(25).joined(separator: "\n")
+                if ok && problems.isEmpty {
+                    self.showInfo("Self-test passed", summary.isEmpty ? "The programmer reported no problems." : summary)
+                } else {
+                    self.showError(ok ? "Self-test reported problems" : "Self-test didn't complete",
+                                   (problems.isEmpty ? summary : problems.joined(separator: "\n")) + "\n\nThe full output is in the Log.")
+                }
             }
         }
     }

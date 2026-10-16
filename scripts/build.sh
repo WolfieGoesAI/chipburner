@@ -153,7 +153,7 @@ MANFILE="$(find "$WORK/src/minipro-git" -name 'minipro.1' -print -quit)"
 MANTXT="$( (mandoc -T ascii "$MANFILE" 2>/dev/null || groff -man -Tascii "$MANFILE" 2>/dev/null || cat "$MANFILE") | col -b | sed 's/\\-/-/g')"
 missing=0
 OPTDOC=""
-for opt in -q -k -L -d -p -r -w -m -b -E -x -y -s -e -v -c -D -T -i -I -u -P --infoic --logicic; do
+for opt in -q -k -L -d -p -r -w -m -b -E -x -y -s -e -v -c -D -T -i -I -u -P -t --infoic --logicic; do
   lines="$(grep -E -A2 "^[[:space:]]*(-[A-Za-z], )?$opt([,[:space:]]|$)" <<<"$MANTXT" | head -3 | tr -s ' ' || true)"
   if [ -z "$lines" ]; then echo "MISSING OPTION: $opt"; missing=1; else OPTDOC+="$lines"$'\n'; fi
 done
