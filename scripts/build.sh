@@ -229,9 +229,8 @@ DIAG=""
 diag() { DIAG+="### $1"$'\n'"$2"$'\n\n'; }
 diag "minipro source" "$MINIPRO_DESC"$'\n'"$("$APP/Contents/MacOS/minipro" --version 2>&1 | head -5)"
 diag "Test-related chip types" "$(grep -E '^(SRAM|DRAMLOGIC|LOGICNAMES|TL866A entries)' <<<"$DBT")"
-diag "write_logic_file" "$(sed -n '/^int write_logic_file/,/^}/p' "$WORK/src/minipro-git/src/minipro.c" | head -90)"
-diag "do_ic_test" "$(grep -n -B2 -A80 '^static uint8_t \*do_ic_test\|^uint8_t \*do_ic_test' "$WORK/src/minipro-git/src/"*.c | head -120 | cut -c1-200)"
-diag "vector parsing in database.c" "$(grep -n -i -B3 -A25 'vector_count\s*=' "$WORK/src/minipro-git/src/database.c" | head -80 | cut -c1-200)"
+diag "tl866a logic test" "$(sed -n '/^int tl866a_logic_ic_test/,/^}/p' "$WORK/src/minipro-git/src/tl866a.c" | head -150)"
+diag "logic test caller" "$(grep -n -B30 -A40 'write_logic_file(' "$WORK/src/minipro-git/src/"*.c | grep -v 'int write_logic_file' | head -150 | cut -c40-240)"
 diag "Fuses & Locks families" "$(grep -E '^(FL|FUSES)' <<<"$DBT")"
 printf '%s' "$DIAG" > "$ROOT/diag.txt"
 
