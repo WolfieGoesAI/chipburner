@@ -60,10 +60,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let fileItem = NSMenuItem(); main.addItem(fileItem)
         let fileMenu = NSMenu(title: "File")
-        fileMenu.addItem(withTitle: "Open…", action: #selector(MainWindowController.openFile(_:)), keyEquivalent: "o")
-        fileMenu.addItem(withTitle: "Save as Binary…", action: #selector(MainWindowController.saveBinary(_:)), keyEquivalent: "s")
-        let hexItem = fileMenu.addItem(withTitle: "Save as Intel Hex…", action: #selector(MainWindowController.saveIntelHex(_:)), keyEquivalent: "s")
-        hexItem.keyEquivalentModifierMask = [.command, .shift]
+        fileMenu.addItem(withTitle: "Load…", action: #selector(MainWindowController.openFile(_:)), keyEquivalent: "o")
+        fileMenu.addItem(withTitle: "Save…", action: #selector(MainWindowController.saveFile(_:)), keyEquivalent: "s")
         fileMenu.addItem(.separator())
         fileMenu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         fileItem.submenu = fileMenu

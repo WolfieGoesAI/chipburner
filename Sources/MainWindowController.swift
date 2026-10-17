@@ -240,14 +240,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
 
         bufferLabel.lineBreakMode = .byTruncatingMiddle
         bufferLabel.isSelectable = true
-        let saveHex = button("Save .hex…", #selector(saveIntelHex(_:)))
+        let saveHex = button("Save…", #selector(saveFile(_:)))
         let fileRow = row([bufferLabel, spacer(),
-                           button("Open…", #selector(openFile(_:))),
+                           button("Load…", #selector(openFile(_:))),
                            button("JED…", #selector(showPLDMenu(_:))),
-                           button("Save .bin…", #selector(saveBinary(_:))),
                            saveHex])
 
-        // Hardware… sits at the right edge under Stop and above Save .hex…, centred between them.
+        // Hardware… sits at the right edge under Stop and above Save…, centred between them.
         let hardware = button("Hardware…", #selector(hardwareMenu(_:)))
         let settingsBlock = NSView()
         for v in [grid, hardware] as [NSView] {
@@ -1209,33 +1208,97 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
 
     // MARK: Files
 
+    /// Load…: .bin, Intel HEX or S-record (detected from the name or content), .jed/.conf as text,
+    /// with the EPROM pair tools (even/odd bytes, halves, interleaving two files, byte swap, placing at an address).
     @objc func openFile(_ sender: Any?) {
-        guard let w = window else { return }
+        guard let w = window, !isBusy else { return }
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
+        panel.message = "Load a binary, Intel HEX or Motorola S-record file (or a .jed/.conf fuse file)."
+        let opts = LoadOptions(canPlace: !buffer.isEmpty && !bufferIsText)
+        panel.accessoryView = opts.view
+        panel.isAccessoryViewDisclosed = true
         panel.beginSheetModal(for: w) { [weak self] resp in
             guard let self = self, resp == .OK, let url = panel.url else { return }
             do {
                 let raw = try Data(contentsOf: url)
                 let ext = url.pathExtension.lowercased()
-                if ["hex", "ihx", "ihex"].contains(ext) {
-                    self.buffer = try IntelHex.parse(String(decoding: raw, as: UTF8.self))
-                    self.bufferIsText = false; self.bufferExt = "bin"
-                } else if ["jed", "conf", "txt", "fuses"].contains(ext) {
+                if ["jed", "conf", "txt", "fuses"].contains(ext) {
                     self.buffer = raw
                     self.bufferIsText = true; self.bufferExt = ext == "jed" ? "jed" : "conf"
-                } else {
-                    self.buffer = raw
-                    self.bufferIsText = false; self.bufferExt = "bin"
+                    self.bufferName = url.lastPathComponent
+                    self.updateBufferViews()
+                    self.log("Loaded \(url.lastPathComponent) (\(raw.count) bytes).")
+                    return
                 }
-                self.bufferName = url.lastPathComponent
-                self.updateBufferViews()
-                self.log("Loaded \(url.lastPathComponent) (\(self.buffer.count) bytes).")
+                let fmt = FileFormat.detect(url, raw)
+                let first = opts.apply(try fmt.decode(raw))
+                switch opts.combine {
+                case .none:
+                    self.finishLoad(first, name: url.lastPathComponent, swap: opts.swap, format: fmt)
+                case .placeAt:
+                    guard let at = BufferOps.parseNumber(opts.address), at >= 0, at <= 256 << 20 else {
+                        self.showError("Invalid address.", self.numberHelp); return
+                    }
+                    self.place(opts.swap ? PairTools.swap16(first) : first, at: at, name: url.lastPathComponent)
+                case .thisIsEven, .thisIsOdd, .append:
+                    DispatchQueue.main.async { self.loadSecond(first: first, firstName: url.lastPathComponent, opts: opts) }
+                }
             } catch {
-                self.showError("Could not open \(url.lastPathComponent).", error.localizedDescription)
+                self.showError("Could not load \(url.lastPathComponent).", error.localizedDescription)
             }
         }
+    }
+
+    private func loadSecond(first: Data, firstName: String, opts: LoadOptions) {
+        guard let w = window else { return }
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        switch opts.combine {
+        case .thisIsEven: panel.message = "\(firstName) holds the even bytes. Now choose the ODD (high) EPROM file."
+        case .thisIsOdd: panel.message = "\(firstName) holds the odd bytes. Now choose the EVEN (low) EPROM file."
+        default: panel.message = "Choose the file to append after \(firstName)."
+        }
+        panel.beginSheetModal(for: w) { [weak self] resp in
+            guard let self = self, resp == .OK, let url = panel.url else { return }
+            do {
+                let raw = try Data(contentsOf: url)
+                let second = try FileFormat.detect(url, raw).decode(raw)
+                let result: Data
+                switch opts.combine {
+                case .thisIsEven: result = PairTools.interleave(even: first, odd: second)
+                case .thisIsOdd: result = PairTools.interleave(even: second, odd: first)
+                default: result = first + second
+                }
+                if (opts.combine == .thisIsEven || opts.combine == .thisIsOdd) && first.count != second.count {
+                    self.log("Note: the two EPROM files differ in size (\(first.count) and \(second.count) bytes); the shorter one was padded with FF.")
+                }
+                let name = opts.combine == .append ? "\(firstName) + \(url.lastPathComponent)" : "\(firstName) ⇄ \(url.lastPathComponent)"
+                self.finishLoad(result, name: name, swap: opts.swap, format: .binary)
+            } catch {
+                self.showError("Could not load \(url.lastPathComponent).", error.localizedDescription)
+            }
+        }
+    }
+
+    private func finishLoad(_ data: Data, name: String, swap: Bool, format: FileFormat) {
+        buffer = swap ? PairTools.swap16(data) : data
+        bufferIsText = false
+        bufferExt = "bin"
+        bufferName = name
+        updateBufferViews()
+        log("Loaded \(name) (\(buffer.count) bytes\(format == .binary ? "" : ", " + format.title)\(swap ? ", bytes swapped" : "")).")
+    }
+
+    /// Writes data into the current buffer at an address (extending it with FF if needed); undoable.
+    private func place(_ data: Data, at: Int, name: String) {
+        let count = buffer.count
+        hexEditor.edit { b -> Range<Int>? in
+            if at > count { b.replace(count..<count, with: Data(repeating: 0xFF, count: at - count)) }
+            return b.replace(at..<min(at + data.count, b.count), with: data)
+        }
+        log("Placed \(name) (\(data.count) bytes) at \(hexAddr(at)).")
     }
 
     // MARK: PLD / GAL / JED
@@ -1383,7 +1446,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             showError("The buffer doesn't hold a .jed fuse map.", "Read a GAL, open a .jed file, or assemble a PLD source first.")
             return
         }
-        save(asHex: false)
+        saveFile(nil)
     }
 
     @objc func showSupportedPLDs(_ sender: Any?) {
@@ -1476,26 +1539,46 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         }
     }
 
-    @objc func saveBinary(_ sender: Any?) { save(asHex: false) }
-    @objc func saveIntelHex(_ sender: Any?) { save(asHex: true) }
-
-    private func save(asHex: Bool) {
+    /// Save…: binary, Intel HEX or S-record, with the EPROM pair tools (even/odd bytes, both EPROMs as
+    /// two files, halves, selection, byte swap). Text buffers (.jed/.conf) are saved as they are.
+    @objc func saveFile(_ sender: Any?) {
         guard let w = window else { return }
         guard !buffer.isEmpty else { showError("The buffer is empty.", "Nothing to save yet."); return }
-        let ext = bufferIsText ? bufferExt : (asHex ? "hex" : "bin")
         let panel = NSSavePanel()
         let base = chip.isEmpty ? "dump" : chip.replacingOccurrences(of: "@", with: "_")
-        panel.nameFieldStringValue = base + "." + ext
-        panel.allowedFileTypes = [ext]
+        if bufferIsText {
+            panel.nameFieldStringValue = base + "." + bufferExt
+            panel.allowedFileTypes = [bufferExt]
+            panel.beginSheetModal(for: w) { [weak self] resp in
+                guard let self = self, resp == .OK, let url = panel.url else { return }
+                do { try self.buffer.write(to: url); self.log("Saved \(url.lastPathComponent).") }
+                catch { self.showError("Could not save.", error.localizedDescription) }
+            }
+            return
+        }
+        let last = FileFormat(rawValue: UserDefaults.standard.integer(forKey: "saveFormat")) ?? .binary
+        panel.nameFieldStringValue = base + "." + last.ext
+        let opts = SaveOptions(panel: panel, hasSelection: hexEditor.selection != nil, initial: last)
+        panel.accessoryView = opts.view
+        let selection = hexEditor.selection
         panel.beginSheetModal(for: w) { [weak self] resp in
             guard let self = self, resp == .OK, let url = panel.url else { return }
+            let fmt = opts.format
+            guard let start = BufferOps.parseNumber(opts.startAddress.isEmpty ? "0" : opts.startAddress), start >= 0 else {
+                self.showError("Invalid start address.", self.numberHelp); return
+            }
+            UserDefaults.standard.set(fmt.rawValue, forKey: "saveFormat")
+            let dir = url.deletingLastPathComponent()
+            let stem = url.deletingPathExtension().lastPathComponent
+            let ext = url.pathExtension.isEmpty ? fmt.ext : url.pathExtension
             do {
-                if asHex && !self.bufferIsText {
-                    try IntelHex.write(self.buffer).write(to: url, atomically: true, encoding: .ascii)
-                } else {
-                    try self.buffer.write(to: url)
+                var saved: [String] = []
+                for out in opts.output(buffer: self.buffer, selection: selection) {
+                    let target = out.suffix.isEmpty ? url : dir.appendingPathComponent(stem + out.suffix + "." + ext)
+                    try fmt.encode(out.data, startAddress: fmt == .binary ? 0 : start).write(to: target)
+                    saved.append("\(target.lastPathComponent) (\(out.data.count) bytes)")
                 }
-                self.log("Saved \(url.lastPathComponent).")
+                self.log("Saved " + saved.joined(separator: " and ") + " as \(fmt.title).")
             } catch {
                 self.showError("Could not save.", error.localizedDescription)
             }
@@ -1547,7 +1630,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         }
         walk(content)
         print("SMOKE window visible=\(w.isVisible) frame=\(NSStringFromRect(w.frame)) content=\(NSStringFromRect(content.frame)) buttons=\(buttons.count)")
-        for t in ["Read", "Stop", "Hardware…", "Save .hex…", "Ident EPROM…", "Ident Logic…", "Chip Info", "Logic Test", "Auto…", "Voltages…", "Settings…"] {
+        for t in ["Read", "Stop", "Hardware…", "Save…", "Ident EPROM…", "Ident Logic…", "Chip Info", "Logic Test", "Auto…", "Voltages…", "Settings…"] {
             if let r = buttons[t] { print(String(format: "SMOKE %@ x=%.0f..%.0f y=%.0f..%.0f", t, r.minX, r.maxX, r.minY, r.maxY)) }
             else { print("SMOKE missing button: \(t)") }
         }
