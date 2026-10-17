@@ -86,8 +86,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             window.layoutIfNeeded()
             let smallest = content.frame.size
             window.contentMinSize = smallest
+            // Fixed width: the window only grows taller (more hex rows), never wider.
+            window.contentMaxSize = NSSize(width: smallest.width, height: CGFloat.greatestFiniteMagnitude)
             window.setContentSize(smallest)
         }
+        // The green button zooms (to full screen height) instead of entering full-screen mode.
+        window.collectionBehavior.insert(.fullScreenNone)
         chipField.stringValue = UserDefaults.standard.string(forKey: "lastChip") ?? ""
         updateBufferViews()
         updateEnabledState()
@@ -1689,6 +1693,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     // MARK: Hardware
 
     /// Hardware… : check which programmer is connected, or run its self-test.
+    /// Zoom / maximise: keep the width and position, use the screen's full usable height.
+    func windowWillUseStandardFrame(_ window: NSWindow, defaultFrame newFrame: NSRect) -> NSRect {
+        guard window === self.window else { return newFrame }
+        let screen = (window.screen ?? NSScreen.main)?.visibleFrame ?? newFrame
+        var x = window.frame.minX
+        x = min(max(x, screen.minX), max(screen.minX, screen.maxX - window.frame.width))
+        return NSRect(x: x, y: screen.minY, width: window.frame.width, height: screen.height)
+    }
+
     @objc func hardwareMenu(_ sender: Any?) {
         guard let w = window, !isBusy else { return }
         let a = NSAlert()
@@ -1698,16 +1711,73 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
 
             Test Programmer runs the programmer's own hardware self-test of its pin drivers and voltages. \
             Take any chip out of the socket and disconnect any ICSP cable first.
+
+            Firmware Upgrade installs new firmware in the programmer from XGecu's firmware file.
             """
         a.addButton(withTitle: "Check Programmer")
         a.addButton(withTitle: "Test Programmer")
+        a.addButton(withTitle: "Firmware Upgrade…")
         a.addButton(withTitle: "Cancel")
         a.beginSheetModal(for: w) { [weak self] resp in
             guard let self = self else { return }
             switch resp {
             case .alertFirstButtonReturn: self.checkProgrammer(nil)
             case .alertSecondButtonReturn: self.testProgrammer(nil)
+            case .alertThirdButtonReturn:
+                // Let this sheet close before the next one opens.
+                DispatchQueue.main.async { self.firmwareUpgrade(nil) }
             default: break
+            }
+        }
+    }
+
+    /// minipro -F: writes new firmware into the programmer from XGecu's update file.
+    @objc func firmwareUpgrade(_ sender: Any?) {
+        guard let w = window, !isBusy else { return }
+        let fileNames = "TL866A / TL866CS: update.dat\nTL866II Plus: updateII.dat\nT48: updateT48.dat\nT56: updateT56.dat"
+        let intro = NSAlert()
+        intro.messageText = "Firmware Upgrade"
+        intro.informativeText = """
+            Choose the firmware file that comes with XGecu's own programmer software (it's in the program folder after installing it on a Windows PC, or inside the downloaded installer):
+
+            \(fileNames)
+
+            Before you start: connect only one programmer, take any chip out of the socket and unplug the ICSP cable. Don't unplug the programmer or quit ChipBurner while the upgrade runs.
+
+            If the programmer already has the newest firmware, you don't need to do this – Check Programmer shows the version it has.
+            """
+        intro.addButton(withTitle: "Choose File…")
+        intro.addButton(withTitle: "Cancel")
+        intro.beginSheetModal(for: w) { [weak self] resp in
+            guard let self = self, resp == .alertFirstButtonReturn else { return }
+            DispatchQueue.main.async {
+                let panel = NSOpenPanel()
+                panel.allowedFileTypes = ["dat"]
+                panel.allowsOtherFileTypes = true
+                panel.message = "Choose the programmer's firmware file (update.dat, updateII.dat, …)."
+                panel.beginSheetModal(for: w) { [weak self] r in
+                    guard let self = self, r == .OK, let url = panel.url else { return }
+                    let confirm = NSAlert()
+                    confirm.alertStyle = .critical
+                    confirm.messageText = "Install the firmware from \(url.lastPathComponent)?"
+                    confirm.informativeText = "The programmer will restart during the upgrade. Keep it connected until ChipBurner says the upgrade has finished. If it's interrupted, the programmer starts in its bootloader and the upgrade can be run again."
+                    confirm.addButton(withTitle: "Upgrade Firmware")
+                    confirm.addButton(withTitle: "Cancel")
+                    confirm.beginSheetModal(for: w) { [weak self] c in
+                        guard let self = self, c == .alertFirstButtonReturn else { return }
+                        self.runJob("Firmware upgrade", ["-F", url.path]) { [weak self] ok, output in
+                            guard let self = self else { return }
+                            let lines = output.components(separatedBy: .newlines)
+                                .filter { !$0.isEmpty && !$0.contains("overridden database") }
+                            if ok {
+                                self.showInfo("Firmware upgrade finished", lines.suffix(8).joined(separator: "\n"))
+                                self.checkProgrammer(nil)
+                            } else {
+                                self.showError("Firmware upgrade failed", lines.suffix(10).joined(separator: "\n") + "\n\nThe full output is in the Log. If the programmer now starts in its bootloader, run the upgrade again.")
+                            }
+                        }
+                    }
+                }
             }
         }
     }

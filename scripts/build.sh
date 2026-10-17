@@ -156,7 +156,7 @@ MANFILE="$(find "$WORK/src/minipro-git" -name 'minipro.1' -print -quit)"
 MANTXT="$( (mandoc -T ascii "$MANFILE" 2>/dev/null || groff -man -Tascii "$MANFILE" 2>/dev/null || cat "$MANFILE") | col -b | sed 's/\\-/-/g')"
 missing=0
 OPTDOC=""
-for opt in -q -k -L -d -p -r -w -m -b -E -x -y -s -e -v -c -D -T -i -I -u -P -t --infoic --logicic; do
+for opt in -q -k -L -d -p -r -w -m -b -E -x -y -s -e -v -c -D -T -i -I -u -P -t -F --infoic --logicic; do
   lines="$(grep -E -A2 "^[[:space:]]*(-[A-Za-z], )?$opt([,[:space:]]|$)" <<<"$MANTXT" | head -3 | tr -s ' ' || true)"
   if [ -z "$lines" ]; then echo "MISSING OPTION: $opt"; missing=1; else OPTDOC+="$lines"$'\n'; fi
 done
@@ -230,6 +230,7 @@ diag() { DIAG+="### $1"$'\n'"$2"$'\n\n'; }
 diag "minipro source" "$MINIPRO_DESC"$'\n'"$("$APP/Contents/MacOS/minipro" --version 2>&1 | head -5)"
 diag "Test-related chip types" "$(grep -E '^(SRAM|DRAMLOGIC|LOGICNAMES|TL866A entries)' <<<"$DBT")"
 diag "get_fuse_value" "$(grep -rn -A40 '^int get_fuse_value\|^static int get_fuse_value' "$WORK/src/minipro-git/src/" | cut -c1-200 | sed 's|.*/src/||' | head -60)"
+diag "firmware update" "$("$APP/Contents/MacOS/minipro" --help 2>&1 | grep -i -A1 'update\|-F' | head -8; grep -rn -i 'update.dat\|updateII\|bootloader\|firmware' "$WORK/src/minipro-git/src/main.c" | head -25 | cut -c1-200 | sed 's|.*/src/||')"
 diag "Fuses & Locks families" "$(grep -E '^(FL|FUSES)' <<<"$DBT")"
 printf '%s' "$DIAG" > "$ROOT/diag.txt"
 
