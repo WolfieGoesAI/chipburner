@@ -8,7 +8,26 @@ enum ChipTests {
 
     enum Pattern: String, CaseIterable {
         case zeros = "all 00", ones = "all FF", x55 = "55 (01010101)", xAA = "AA (10101010)"
-        case checker = "checkerboard 55/AA", address = "address pattern", addressInverse = "inverted address pattern"
+        case checker = "checkerboard 55/AA"
+        case addressLow = "address A0–A7 pattern", addressHigh = "address A8–A15 pattern", addressTop = "address A16–A23 pattern"
+
+        /// The address bits an address pattern checks (each appears in exactly one pattern).
+        var addressBits: Range<Int>? {
+            switch self {
+            case .addressLow: return 0..<8
+            case .addressHigh: return 8..<16
+            case .addressTop: return 16..<24
+            default: return nil
+            }
+        }
+
+        /// The address patterns needed for a chip of this size.
+        static func addressPatterns(for size: Int) -> [Pattern] {
+            var p: [Pattern] = [.addressLow]
+            if size > 0x100 { p.append(.addressHigh) }
+            if size > 0x10000 { p.append(.addressTop) }
+            return p
+        }
 
         func byte(at a: Int) -> UInt8 {
             switch self {
@@ -17,8 +36,9 @@ enum ChipTests {
             case .x55: return 0x55
             case .xAA: return 0xAA
             case .checker: return a & 1 == 0 ? 0x55 : 0xAA
-            case .address: return ChipTests.addressByte(a)
-            case .addressInverse: return ~ChipTests.addressByte(a)
+            case .addressLow: return UInt8(truncatingIfNeeded: a)
+            case .addressHigh: return UInt8(truncatingIfNeeded: a >> 8)
+            case .addressTop: return UInt8(truncatingIfNeeded: a >> 16)
             }
         }
 
@@ -32,11 +52,9 @@ enum ChipTests {
         }
     }
 
-    /// A byte that differs between any two addresses one address bit apart, so an address line that
-    /// is stuck or shorted shows up as reading the neighbouring address's value.
-    static func addressByte(_ a: Int) -> UInt8 {
-        UInt8(truncatingIfNeeded: a ^ (a >> 8) ^ (a >> 16) ^ (a >> 24))
-    }
+    // An address pattern stores one byte of each cell's own address. If an address line is stuck or
+    // shorted, two addresses share a cell, so one of them reads back the value of the address one
+    // bit away – which tells exactly which line it is.
 
     // MARK: Comparing a pattern with what was read back
 
@@ -65,10 +83,10 @@ enum ChipTests {
             if failing.count < 200_000 { failing.append(i) }
         }
         // Address-line check: a failing byte that holds the value of the address one bit away.
-        if let p = pattern, p == .address || p == .addressInverse, !failing.isEmpty {
+        if let p = pattern, let range = p.addressBits, !failing.isEmpty {
             var bits = 0
             while (1 << bits) < n { bits += 1 }
-            for k in 0..<bits {
+            for k in range where k < bits {
                 var hits = 0
                 for a in failing {
                     let b = a ^ (1 << k)

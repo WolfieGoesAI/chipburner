@@ -168,20 +168,27 @@ func simulateRAM(size: Int, write: Data, stuckAddressBit: Int? = nil, stuckHigh:
     return out
 }
 let ramSize = 0x2000
-let addrPat = ChipTests.Pattern.address.data(count: ramSize)
-let goodRAM = ChipTests.compare(expected: addrPat, got: simulateRAM(size: ramSize, write: addrPat), pattern: .address)
-expect(goodRAM.ok, "chip test: a good RAM passes the address pattern")
-let a5low = ChipTests.compare(expected: addrPat, got: simulateRAM(size: ramSize, write: addrPat, stuckAddressBit: 5), pattern: .address)
-expect(!a5low.ok && a5low.addressLineSuspects == [5], "chip test: A5 stuck low is found (\(a5low.addressLineSuspects))")
-let a11high = ChipTests.compare(expected: addrPat, got: simulateRAM(size: ramSize, write: addrPat, stuckAddressBit: 11, stuckHigh: true), pattern: .address)
-expect(a11high.addressLineSuspects == [11], "chip test: A11 stuck high is found (\(a11high.addressLineSuspects))")
+func addressTest(_ ram: (Data) -> Data) -> [Int] {
+    var suspects: [Int] = []
+    for p in ChipTests.Pattern.addressPatterns(for: ramSize) {
+        let want = p.data(count: ramSize)
+        suspects += ChipTests.compare(expected: want, got: ram(want), pattern: p).addressLineSuspects
+    }
+    return suspects
+}
+expect(addressTest { simulateRAM(size: ramSize, write: $0) }.isEmpty, "chip test: a good RAM passes the address patterns")
+for (bit, high) in [(0, false), (3, false), (5, true), (8, false), (11, true), (12, false)] {
+    let found = addressTest { simulateRAM(size: ramSize, write: $0, stuckAddressBit: bit, stuckHigh: high) }
+    expect(found == [bit], "chip test: A\(bit) stuck \(high ? "high" : "low") is found exactly (\(found))")
+}
 let ffPat = ChipTests.Pattern.ones.data(count: ramSize)
 let d3 = ChipTests.compare(expected: ffPat, got: simulateRAM(size: ramSize, write: ffPat, dataBitStuck0: 3), pattern: .ones)
 expect(d3.badBytes == ramSize && d3.badBits == 0x08 && d3.addressLineSuspects.isEmpty, "chip test: D3 stuck at 0 shows as bit D3 in every byte")
-var shaky = ChipTests.Pattern.address.data(count: 1024); var shaky2 = shaky; shaky2[100] ^= 0x04; shaky2[700] ^= 0x04
+var shaky = ChipTests.Pattern.addressLow.data(count: 1024); var shaky2 = shaky; shaky2[100] ^= 0x04; shaky2[700] ^= 0x04
 let stab = ChipTests.stability([shaky, shaky2, shaky])
 expect(stab.unstableBytes == 2 && stab.unstableBits == 0x04, "chip test: unstable bits between reads are found")
-var img = Data((0..<0x4000).map { UInt8(truncatingIfNeeded: $0 &* 31 ^ ($0 >> 5)) }); img.append(img)
+var lcg: UInt32 = 12345
+var img = Data((0..<0x4000).map { _ -> UInt8 in lcg = lcg &* 1103515245 &+ 12345; return UInt8(truncatingIfNeeded: lcg >> 16) }); img.append(img)
 let rep = ChipTests.analyse(img)
 expect(rep.repeatsEvery == 0x4000, "chip test: a 16 KB image repeated in a 32 KB chip is spotted (\(rep.repeatsEvery ?? 0))")
 expect(ChipTests.analyse(Data(repeating: 0xFF, count: 4096)).blank, "chip test: blank chip recognised")

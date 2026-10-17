@@ -30,7 +30,7 @@ final class ChipTestWindowController: NSWindowController {
     // SRAM options
     private let solidBox = NSButton(checkboxWithTitle: "All 00 and all FF (stuck bits)", target: nil, action: nil)
     private let checkerBox = NSButton(checkboxWithTitle: "55, AA and checkerboard (neighbouring bits)", target: nil, action: nil)
-    private let addressBox = NSButton(checkboxWithTitle: "Address pattern and its inverse (address-line faults)", target: nil, action: nil)
+    private let addressBox = NSButton(checkboxWithTitle: "Address patterns (finds stuck or shorted address lines)", target: nil, action: nil)
     private let backupBox = NSButton(checkboxWithTitle: "Back up the contents first and write them back afterwards", target: nil, action: nil)
     // Memory options
     private let readsPopup = NSPopUpButton(frame: .zero, pullsDown: false)
@@ -256,7 +256,7 @@ final class ChipTestWindowController: NSWindowController {
         var patterns: [ChipTests.Pattern] = []
         if solidBox.state == .on { patterns += [.zeros, .ones] }
         if checkerBox.state == .on { patterns += [.x55, .xAA, .checker] }
-        if addressBox.state == .on { patterns += [.address, .addressInverse] }
+        if addressBox.state == .on { patterns += ChipTests.Pattern.addressPatterns(for: setup.size) }
         guard !patterns.isEmpty else { return [] }
         let size = setup.size
         var steps: [Step] = []
@@ -316,7 +316,7 @@ final class ChipTestWindowController: NSWindowController {
         }
         if writeTestBox.isEnabled && writeTestBox.state == .on {
             let backup = reads[0]
-            for p in [ChipTests.Pattern.x55, .xAA, .address] {
+            for p in [ChipTests.Pattern.x55, .xAA] + ChipTests.Pattern.addressPatterns(for: size) {
                 let file = tempURL("health-\(p).bin"), back = tempURL("health-\(p)-read.bin")
                 let data = p.data(count: size)
                 try? data.write(to: file)
