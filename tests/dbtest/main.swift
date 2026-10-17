@@ -300,5 +300,24 @@ if let xml = try? String(contentsOfFile: args[2]) {
     expect(Pinouts.logicBase("SN74LS00N") == "7400" && Pinouts.logicBase("74HCT245") == "74245" && Pinouts.logicBase("CD4011BE") == "4011", "logic part numbers")
 }
 
+// Pinout coverage for the TL866A's chips (printed for the build notes).
+do {
+    for (kind, label) in [(ChipInfo.Kind.memory, "memory"), (.mcu, "MCU"), (.pld, "PLD"), (.sram, "SRAM")] {
+        let names = db.names(of: kind, programmer: "TL866A")
+        var have = 0, dip = 0, dipHave = 0
+        var pkgs: [String: Int] = [:]
+        for n in names {
+            let info = db.info(for: n, programmer: "TL866A")
+            let p = Pinouts.find(chip: n, size: info?.codeSize, isSRAM: kind == .sram)
+            if p != nil { have += 1 }
+            let pkg = n.uppercased().split(separator: "@").dropFirst().first.map { String($0.prefix { $0.isLetter }) } ?? "none"
+            pkgs[pkg, default: 0] += 1
+            if pkg == "DIP" || pkg == "none" { dip += 1; if p != nil { dipHave += 1 } }
+        }
+        let top = pkgs.sorted { $0.value > $1.value }.prefix(8).map { "\($0.key) \($0.value)" }.joined(separator: ", ")
+        print("PINCOVER \(label): \(have) of \(names.count) have a drawing; DIP/no package \(dipHave) of \(dip); packages: \(top)")
+    }
+}
+
 print(failed ? "DBTEST FAILED" : "DBTEST OK")
 exit(failed ? 1 : 0)
