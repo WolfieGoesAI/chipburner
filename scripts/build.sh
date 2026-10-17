@@ -229,13 +229,17 @@ GT="$("$WORK/galtest" "$ROOT/tests/gal/cases" 2>&1)" || { echo "$GT"; printf '##
 echo "$GT"
 note "JED decoder test" "$(grep -v '^;' <<<"$GT" | tail -40)"
 
+log "Test: disassemblers against MAME's output"
+xcrun swiftc -O -sdk "$SDK" "$ROOT/Sources/Disassembler.swift" "$ROOT/Sources/DisasmTables.swift" "$ROOT/tests/disasmtest/main.swift" -o "$WORK/disasmtest"
+DT="$("$WORK/disasmtest" "$ROOT/tests/disasm/vectors.txt" 2>&1)" || { echo "$DT"; printf '### disasmtest\n%s\n' "$(head -150 <<<"$DT")" > "$ROOT/diag.txt"; false; }
+echo "$DT"
+note "Disassembler test" "$(tail -8 <<<"$DT")"
+
 # Extra diagnostics: add diag "title" "text" lines here; the workflow prints them as notices.
 DIAG=""
 diag() { DIAG+="### $1"$'\n'"$2"$'\n\n'; }
 diag "minipro source" "$MINIPRO_DESC"$'\n'"$("$APP/Contents/MacOS/minipro" --version 2>&1 | head -5)"
 diag "Test-related chip types" "$(grep -E '^(SRAM|DRAMLOGIC|LOGICNAMES|TL866A entries)' <<<"$DBT")"
-diag "get_fuse_value" "$(grep -rn -A40 '^int get_fuse_value\|^static int get_fuse_value' "$WORK/src/minipro-git/src/" | cut -c1-200 | sed 's|.*/src/||' | head -60)"
-diag "About box info" "$(plutil -p "$APP/Contents/Info.plist" | grep -E 'ChipBurner|Version|Copyright')"
 diag "Fuses & Locks families" "$(grep -E '^(FL|FUSES)' <<<"$DBT")"
 printf '%s' "$DIAG" > "$ROOT/diag.txt"
 
