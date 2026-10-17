@@ -24,6 +24,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     private let chipField = NSTextField()
     private let chipInfoLabel = NSTextField(labelWithString: "")
     private let bufferLabel = NSTextField(labelWithString: "Buffer: empty")
+    private var programmerModel: String?
     private let statusLabel = NSTextField(labelWithString: "Ready")
     private let progress = NSProgressIndicator()
     private let hexEditor = HexEditorView()
@@ -256,8 +257,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
 
         bufferLabel.lineBreakMode = .byTruncatingMiddle
         bufferLabel.isSelectable = true
-        // Same monospaced font as the hex editor, starting at the same x as its "Address" heading.
+        // Under the hex editor, in its monospaced font, starting at the same x as its "Address" heading.
         bufferLabel.font = NSFont.userFixedPitchFont(ofSize: 12) ?? .systemFont(ofSize: 12)
+        bufferLabel.textColor = .secondaryLabelColor     // the same grey as the Address heading
         let fileRow = row([bufferLabel, spacer()])
         fileRow.edgeInsets = NSEdgeInsets(top: 0, left: 10, bottom: 0, right: 0)
 
@@ -285,7 +287,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         }
         let dividerTop = divider(), dividerBottom = divider(), dividerStatus = divider()
         // The edit buttons sit under the buffer, with a divider between them and the status line.
-        let rows: [NSView] = [progRow, chipRow, chipInfoLabel, dividerTop, actionRow, settingsBlock, dividerBottom, fileRow, bufferView, editRow, dividerStatus, statusRow]
+        let rows: [NSView] = [progRow, chipRow, chipInfoLabel, dividerTop, actionRow, settingsBlock, dividerBottom, bufferView, fileRow, editRow, dividerStatus, statusRow]
         let stack = NSStackView(views: rows)
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -296,8 +298,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         stack.setCustomSpacing(12, after: dividerTop)
         stack.setCustomSpacing(12, after: settingsBlock)
         stack.setCustomSpacing(10, after: dividerBottom)
+        stack.setCustomSpacing(4, after: bufferView)
         stack.setCustomSpacing(6, after: fileRow)
-        stack.setCustomSpacing(6, after: bufferView)
         stack.setCustomSpacing(10, after: editRow)
         stack.setCustomSpacing(8, after: dividerStatus)
         stack.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 12, right: 16)
@@ -756,7 +758,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             self.setStatus(ok ? "\(title): done" : "\(title): failed (exit code \(status)) – see Log")
             self.log(ok ? "✓ \(title) finished." : "✗ \(title) failed (exit code \(status)).")
             if !ok { NSSound.beep() }
-            done?(ok, collected.joined(separator: "\n"))
+            let all = collected.joined(separator: "\n")
+            // Every job prints the programmer's firmware and serial number; keep the top line current.
+            if let model = self.programmerModel, all.contains("Serial code:") {
+                self.programmerLabel.stringValue = Minipro.programmerSummary(model: model, from: all)
+            }
+            done?(ok, all)
         })
         if running == nil { isBusy = false }
     }
@@ -768,16 +775,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         programmerLabel.stringValue = "Checking…"
         DispatchQueue.global(qos: .userInitiated).async {
             let r = Minipro.shared.runSync(["-k"])
+            // -k only names the model. A device search opens the programmer properly and prints its
+            // firmware and serial number ("Found TL866A 03.2.86 …", "Serial code: …") without
+            // touching the socket; the search term matches no chip.
+            let info = r.status == 0 ? Minipro.shared.runSync(["-L", "CHIPBURNER-NO-SUCH-CHIP"]).output : ""
             DispatchQueue.main.async {
                 let lines = r.output.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
                     .filter { !$0.isEmpty && !$0.contains("overridden database") }
                 if r.status == 0, let model = Minipro.shared.updateProgrammerType(from: r.output) {
-                    self.programmerLabel.stringValue = Minipro.programmerSummary(model: model, from: r.output)
+                    self.programmerModel = model
+                    self.programmerLabel.stringValue = Minipro.programmerSummary(model: model, from: info)
                 } else {
                     let first = lines.first ?? "No answer"
                     self.programmerLabel.stringValue = r.status == 0 ? first : "Not found – \(first)"
                 }
-                self.log("Programmer check:\n" + r.output.trimmingCharacters(in: .whitespacesAndNewlines))
+                self.log("Programmer check:\n" + (r.output + "\n" + info).components(separatedBy: .newlines)
+                    .filter { !$0.isEmpty && !$0.contains("overridden database") }.joined(separator: "\n"))
                 self.updateChipInfo()
             }
         }
