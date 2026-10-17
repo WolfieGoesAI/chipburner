@@ -252,7 +252,7 @@ do {
     expect(Pinouts.find(chip: "W25Q32@SOIC8", size: 4194304)?.pins[5] == "CLK", "pinout W25Q32")
     expect(Pinouts.find(chip: "GAL16V8@DIP20", size: nil)?.pins[10] == "/OE/I11", "pinout GAL16V8")
     expect(Pinouts.find(chip: "AT89C51@DIP40", size: 4096)?.pins[30] == "/EA/VPP", "pinout 8051")
-    expect(Pinouts.find(chip: "AM27C256@PLCC32", size: 32768) == nil, "no pinout for PLCC")
+    expect(Pinouts.find(chip: "AM29F040@TSOP32", size: 524288) == nil, "no pinout for TSOP")
     // every generated layout has exactly one VCC and at least one ground
     for c in [("2716", 2048), ("2732", 4096), ("27128", 16384), ("27C010", 131072), ("27C020", 262144), ("27C040", 524288), ("28C16", 2048), ("28C64", 8192), ("6116", 2048), ("6264", 8192), ("628128", 131072), ("628512", 524288), ("29F010", 131072), ("29F020", 262144)] {
         let p = Pinouts.find(chip: c.0, size: c.1, isSRAM: c.0.hasPrefix("6"))
