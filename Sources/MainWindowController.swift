@@ -259,7 +259,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         // Same monospaced font as the hex editor, starting at the same x as its "Address" heading.
         bufferLabel.font = NSFont.userFixedPitchFont(ofSize: 12) ?? .systemFont(ofSize: 12)
         let fileRow = row([bufferLabel, spacer()])
-        fileRow.edgeInsets = NSEdgeInsets(top: 0, left: 8, bottom: 0, right: 0)
+        fileRow.edgeInsets = NSEdgeInsets(top: 0, left: 10, bottom: 0, right: 0)
 
         let settingsBlock = grid
         let editRow = buildEditRow()
