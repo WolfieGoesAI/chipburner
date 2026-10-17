@@ -263,7 +263,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         // Under the hex editor, in its monospaced font, starting at the same x as its "Address" heading.
         bufferLabel.font = NSFont.userFixedPitchFont(ofSize: 12) ?? .systemFont(ofSize: 12)
         bufferLabel.textColor = .secondaryLabelColor     // the same grey as the Address heading
-        let fileRow = row([bufferLabel, spacer()])
+        // The cursor / selection text follows the buffer details on the same line, in the same style.
+        selectionLabel.font = bufferLabel.font
+        selectionLabel.textColor = .secondaryLabelColor
+        selectionLabel.lineBreakMode = .byTruncatingTail
+        // The buffer details give way (truncate) before the cursor text does.
+        selectionLabel.setContentCompressionResistancePriority(NSLayoutConstraint.Priority(rawValue: 260), for: .horizontal)
+        selectionLabel.setContentHuggingPriority(.required, for: .horizontal)
+        let fileRow = row([bufferLabel, selectionLabel, spacer()])
+        fileRow.spacing = 0
+        fileRow.alignment = .firstBaseline
         fileRow.edgeInsets = NSEdgeInsets(top: 0, left: 10, bottom: 0, right: 0)
 
         let settingsBlock = grid
@@ -301,8 +310,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         stack.setCustomSpacing(12, after: dividerTop)
         stack.setCustomSpacing(12, after: settingsBlock)
         stack.setCustomSpacing(10, after: dividerBottom)
-        stack.setCustomSpacing(4, after: bufferView)
-        stack.setCustomSpacing(6, after: fileRow)
+        // The buffer line sits midway between the hex editor and the edit buttons.
+        stack.setCustomSpacing(7, after: bufferView)
+        stack.setCustomSpacing(5, after: fileRow)
         stack.setCustomSpacing(10, after: editRow)
         stack.setCustomSpacing(8, after: dividerStatus)
         stack.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 12, right: 16)
@@ -2120,10 +2130,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             b.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
             return b
         }
-        selectionLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        selectionLabel.textColor = .secondaryLabelColor
-        selectionLabel.lineBreakMode = .byTruncatingHead
-        selectionLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         hexEditor.onSelectionChange = { [weak self] in self?.updateSelectionLabel() }
         updateSelectionLabel()
         // Tools: compare, disassemble, pinout.
@@ -2138,7 +2144,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             tools.menu?.addItem(item)
         }
         tools.toolTip = "Compare the buffer with a file or chip, show it as CPU code, or show the chip's pinout."
-        return row(buttons + [tools, spacer(), selectionLabel])
+        return row(buttons + [tools, spacer()])
     }
 
     /// Called after every edit: marks the buffer edited and refreshes the label (checksums are
@@ -2161,12 +2167,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     }
 
     private func updateSelectionLabel() {
-        guard !bufferIsText, !buffer.isEmpty else { selectionLabel.stringValue = "Click to place the cursor, drag to select"; return }
+        guard !bufferIsText, !buffer.isEmpty else { selectionLabel.stringValue = ""; return }
         if let s = hexEditor.selection {
-            selectionLabel.stringValue = "Selected \(hexAddr(s.lowerBound))–\(hexAddr(s.upperBound - 1)) (\(s.count) bytes)"
+            selectionLabel.stringValue = " — selected \(hexAddr(s.lowerBound))–\(hexAddr(s.upperBound - 1)) (\(s.count) bytes)"
         } else {
             let a = hexEditor.selectedAddress
-            selectionLabel.stringValue = a < buffer.count ? String(format: "Cursor %@ = %02X", hexAddr(a), buffer[a]) : ""
+            selectionLabel.stringValue = a < buffer.count ? String(format: " — cursor %@ = %02X", hexAddr(a), buffer[a]) : ""
         }
     }
 
