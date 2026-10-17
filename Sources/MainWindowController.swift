@@ -159,16 +159,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         programmerLabel.isSelectable = true
         let progRow = row([bold("Programmer:"), programmerLabel, spacer()])
 
-        chipField.placeholderString = "e.g. AM27C256@DIP28 – use Search or Ident EPROM"
+        chipField.placeholderString = "e.g. AM27C256@DIP28 – use Search or Chip Ident"
         chipField.delegate = self
         chipField.widthAnchor.constraint(greaterThanOrEqualToConstant: 300).isActive = true
         let logic = logicTestButton
-        let logicID = button("Ident Logic…", #selector(identifyLogic(_:)))
+        let logicID = button("Logic Ident…", #selector(identifyLogic(_:)))
         let hardware = button("Hardware…", #selector(hardwareMenu(_:)))
-        // Two rows: Ident Logic under Ident EPROM, Logic Test under Chip Test, Hardware under Chip Info.
+        // Two rows: Logic Ident under Chip Ident, Logic Test under Chip Test, Hardware under Chip Info.
         let chipRow = NSGridView(views: [
             [bold("Chip:"), chipField, button("Search…", #selector(searchChips(_:))),
-             button("Ident EPROM…", #selector(identifyChip(_:))), chipTestButton, button("Chip Info", #selector(chipInfo(_:))), NSView()],
+             button("Chip Ident…", #selector(identifyChip(_:))), chipTestButton, button("Chip Info", #selector(chipInfo(_:))), NSView()],
             [NSView(), NSView(), NSView(), logicID, logic, hardware, NSView()],
         ])
         chipRow.rowSpacing = 6
@@ -516,7 +516,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         let testKind = chipDetails.map { $0.kind }
         logicTestButton.isEnabled = !isBusy && testKind == .logic
         logicTestButton.toolTip = logicTestButton.isEnabled ? "Runs the logic test vectors for this chip."
-            : "Logic Test works with logic chips (74xx, 40xx …). Select one with Search or Ident Logic."
+            : "Logic Test works with logic chips (74xx, 40xx …). Select one with Search or Logic Ident."
         chipTestButton.isEnabled = !isBusy && (testKind == .sram || testKind == .memory) && (chipDetails?.codeSize ?? 0) > 0
         chipTestButton.toolTip = chipTestButton.isEnabled
             ? (testKind == .sram ? "Pattern test for this SRAM." : "Health check for this EPROM/EEPROM/flash: repeated reads, content analysis and an optional write test.")
@@ -567,7 +567,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
 
     private func requireChip() -> Bool {
         if chip.isEmpty {
-            showError("Choose a chip first.", "Type its exact minipro name, or use Search… or Ident EPROM….")
+            showError("Choose a chip first.", "Type its exact minipro name, or use Search… or Chip Ident….")
             return false
         }
         return true
@@ -818,7 +818,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         let last = UserDefaults.standard.integer(forKey: "identifyChoice")
         if last < choices.count { popup.selectItem(at: last) }
         let a = NSAlert()
-        a.messageText = "Ident EPROM"
+        a.messageText = "Chip Ident"
         a.informativeText = """
             Put the chip in the socket (bottom-aligned, pin 1 at the lever end) and choose what kind of chip it is. \
             ChipBurner reads its electronic ID and lists the chips that match.
@@ -1099,7 +1099,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         if let i = counts.firstIndex(of: UserDefaults.standard.integer(forKey: "logicPins")) { popup.selectItem(at: i) }
         else if let i = counts.firstIndex(of: 14) { popup.selectItem(at: i) }
         let a = NSAlert()
-        a.messageText = "Ident Logic"
+        a.messageText = "Logic Ident"
         a.informativeText = "Put the chip in the socket bottom-aligned with pin 1 at the lever end, and choose its pin count. ChipBurner runs the 5 V test of every chip type with ground on the last pin of the first row and supply on the last pin, and lists the ones it passes. This takes about a second per type; Stop ends it early."
         a.accessoryView = popup
         a.addButton(withTitle: "Start")
@@ -1656,7 +1656,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         }
         walk(content)
         print("SMOKE window visible=\(w.isVisible) frame=\(NSStringFromRect(w.frame)) content=\(NSStringFromRect(content.frame)) buttons=\(buttons.count)")
-        for t in ["Read", "Stop", "Hardware…", "Save…", "Open…", "Fuses & Locks…", "Chip Test…", "Ident EPROM…", "Ident Logic…", "Chip Info", "Logic Test", "Auto…", "Voltages…", "Options…"] {
+        for t in ["Read", "Stop", "Hardware…", "Save…", "Open…", "Fuses & Locks…", "Chip Test…", "Chip Ident…", "Logic Ident…", "Chip Info", "Logic Test", "Auto…", "Voltages…", "Options…"] {
             if let r = buttons[t] { print(String(format: "SMOKE %@ x=%.0f..%.0f y=%.0f..%.0f", t, r.minX, r.maxX, r.minY, r.maxY)) }
             else { print("SMOKE missing button: \(t)") }
         }

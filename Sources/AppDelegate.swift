@@ -89,7 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         chipMenu.addItem(withTitle: "Check Programmer", action: #selector(MainWindowController.checkProgrammer(_:)), keyEquivalent: "k")
         chipMenu.addItem(withTitle: "Test Programmer (Self-Test)…", action: #selector(MainWindowController.testProgrammer(_:)), keyEquivalent: "")
         chipMenu.addItem(withTitle: "Search Chips…", action: #selector(MainWindowController.searchChips(_:)), keyEquivalent: "f")
-        chipMenu.addItem(withTitle: "Ident EPROM…", action: #selector(MainWindowController.identifyChip(_:)), keyEquivalent: "i")
+        chipMenu.addItem(withTitle: "Chip Ident…", action: #selector(MainWindowController.identifyChip(_:)), keyEquivalent: "i")
         chipMenu.addItem(withTitle: "Fuses, User ID & Lock Bits…", action: #selector(MainWindowController.openConfigWindow(_:)), keyEquivalent: "u")
         chipMenu.addItem(withTitle: "Chip Test (SRAM / EPROM health)…", action: #selector(MainWindowController.openChipTest(_:)), keyEquivalent: "")
         chipMenu.addItem(.separator())
@@ -100,7 +100,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         chipMenu.addItem(withTitle: "Erase…", action: #selector(MainWindowController.eraseChip(_:)), keyEquivalent: "")
         chipMenu.addItem(withTitle: "Auto…", action: #selector(MainWindowController.autoBurn(_:)), keyEquivalent: "B")
         chipMenu.addItem(withTitle: "Logic Test", action: #selector(MainWindowController.logicTest(_:)), keyEquivalent: "t")
-        chipMenu.addItem(withTitle: "Ident Logic…", action: #selector(MainWindowController.identifyLogic(_:)), keyEquivalent: "")
+        chipMenu.addItem(withTitle: "Logic Ident…", action: #selector(MainWindowController.identifyLogic(_:)), keyEquivalent: "")
         chipMenu.addItem(.separator())
         chipMenu.addItem(withTitle: "Stop", action: #selector(MainWindowController.stop(_:)), keyEquivalent: ".")
         chipItem.submenu = chipMenu
