@@ -269,14 +269,25 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         let logButton = button("Log", #selector(toggleLog(_:)))
         let statusRow = row([statusLabel, spacer(), progress, logButton])
 
-        let rows: [NSView] = [progRow, chipRow, chipInfoLabel, actionRow, settingsBlock, fileRow, editRow, bufferView, statusRow]
+        // Thin divider lines (the same kind as in the Fuses & Locks window) set off the chip section
+        // and the settings section.
+        func divider() -> NSBox {
+            let b = NSBox()
+            b.boxType = .separator
+            return b
+        }
+        let dividerTop = divider(), dividerBottom = divider()
+        let rows: [NSView] = [progRow, chipRow, chipInfoLabel, dividerTop, actionRow, settingsBlock, dividerBottom, fileRow, editRow, bufferView, statusRow]
         let stack = NSStackView(views: rows)
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
         // Equal gaps above and below the chip description, so it sits midway between the chip rows and Read.
         stack.setCustomSpacing(6, after: chipRow)
-        stack.setCustomSpacing(6, after: chipInfoLabel)
+        stack.setCustomSpacing(10, after: chipInfoLabel)
+        stack.setCustomSpacing(12, after: dividerTop)
+        stack.setCustomSpacing(12, after: settingsBlock)
+        stack.setCustomSpacing(10, after: dividerBottom)
         stack.setCustomSpacing(6, after: fileRow)
         stack.setCustomSpacing(6, after: editRow)
         stack.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 12, right: 16)
@@ -291,7 +302,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         for v in rows {
             v.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -32).isActive = true
         }
-        // Only now do Hardware… and Save .hex… share a superview chain, so the width link can be made.
         stack.setHuggingPriority(.defaultLow, for: .vertical)
         bufferView.setContentHuggingPriority(.defaultLow, for: .vertical)
     }
