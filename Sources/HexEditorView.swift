@@ -168,7 +168,7 @@ fileprivate final class HexGridView: NSView {
     private var digits: Int { BufferOps.addressDigits(for: count) }
 
     let addrX: CGFloat = 8
-    var hexStart: CGFloat { addrX + CGFloat(digits + 2) * charW }
+    var hexStart: CGFloat { addrX + CGFloat(max(digits + 2, 9)) * charW }   // room for the "Address" heading
     func hexX(_ i: Int) -> CGFloat { hexStart + CGFloat(i * 3) * charW + (i >= 8 ? charW : 0) }
     var asciiX: CGFloat { hexX(15) + 4 * charW }
 
