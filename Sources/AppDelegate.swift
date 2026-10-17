@@ -71,6 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             gitlab.com/DavidGriffith/minipro
             \(dbLine)libusb \(v("ChipBurnerLibusb")) – GNU LGPL 2.1
             GAL assembler based on Galette by Simon Frankau – MIT licence
+            Disassemblers ported from MAME (Juergen Buchmueller, Nathan Woods, Sean Riddle, Tim Lindner, Olivier Galibert, Steve Ellenoff) – BSD-3-Clause
 
             Source code: github.com/WolfieGoesAI/chipburner
             """

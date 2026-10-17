@@ -48,7 +48,7 @@ final class PinoutView: NSView {
         notch.stroke()
         // Pin-1 dot
         NSColor.secondaryLabelColor.setFill()
-        NSBezierPath(ovalIn: NSRect(x: body.minX + 8, y: body.minY + 8, width: 6, height: 6)).fill()
+        NSBezierPath(ovalIn: NSRect(x: body.minX + 22, y: body.minY + 9, width: 7, height: 7)).fill()
 
         let numAttrs: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .regular), .foregroundColor: NSColor.secondaryLabelColor]
         for i in 0..<half {
