@@ -256,7 +256,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
 
         bufferLabel.lineBreakMode = .byTruncatingMiddle
         bufferLabel.isSelectable = true
+        // Same monospaced font as the hex editor, starting at the same x as its "Address" heading.
+        bufferLabel.font = NSFont.userFixedPitchFont(ofSize: 12) ?? .systemFont(ofSize: 12)
         let fileRow = row([bufferLabel, spacer()])
+        fileRow.edgeInsets = NSEdgeInsets(top: 0, left: 8, bottom: 0, right: 0)
 
         let settingsBlock = grid
         let editRow = buildEditRow()
@@ -769,7 +772,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
                 let lines = r.output.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
                     .filter { !$0.isEmpty && !$0.contains("overridden database") }
                 if r.status == 0, let model = Minipro.shared.updateProgrammerType(from: r.output) {
-                    self.programmerLabel.stringValue = model
+                    self.programmerLabel.stringValue = Minipro.programmerSummary(model: model, from: r.output)
                 } else {
                     let first = lines.first ?? "No answer"
                     self.programmerLabel.stringValue = r.status == 0 ? first : "Not found – \(first)"

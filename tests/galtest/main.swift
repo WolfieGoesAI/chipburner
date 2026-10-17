@@ -373,6 +373,10 @@ do {
         if attempt == 20 { vecPassed += 1; print("ok   process output streamed completely, 20 of 20 runs (\(streamed.count) lines)") }
     }
 }
+let progOut = "Found TL866A 03.2.86 (0x256)\nDevice code: 52313455\nSerial code: 227631BEA779A714A8A4674B\nUSB speed: 12Mbps (USB 1.1)\n"
+let summary = Minipro.programmerSummary(model: "TL866A", from: progOut)
+if summary == "TL866A – Serial 227631BEA779A714A8A4674B – Firmware 03.2.86" { vecPassed += 1; print("ok   programmer summary") }
+else { vecFailed += 1; print("FAIL programmer summary: \(summary)") }
 print("galtest vectors: \(vecPassed) passed, \(vecFailed) failed")
 print("galtest assemble: \(asmPassed) passed, \(asmFailed) failed; errors: \(errPassed) passed, \(errFailed) failed")
 let allOK = failed == 0 && passed > 0 && asmFailed == 0 && asmPassed > 0 && errFailed == 0 && errPassed > 0 && vecFailed == 0 && vecPassed > 0

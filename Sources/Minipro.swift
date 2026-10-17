@@ -28,6 +28,21 @@ final class Minipro {
         }
         return nil
     }
+    /// "TL866A – Serial 227631… – Firmware 03.2.86" from `minipro -k` output
+    /// ("Found TL866A 03.2.86 (0x256)" … "Serial code: 227631…").
+    static func programmerSummary(model: String, from output: String) -> String {
+        var parts = [model]
+        func match(_ pattern: String) -> String? {
+            guard let re = try? NSRegularExpression(pattern: pattern, options: [.anchorsMatchLines]) else { return nil }
+            let ns = output as NSString
+            guard let m = re.firstMatch(in: output, range: NSRange(location: 0, length: ns.length)), m.numberOfRanges > 1 else { return nil }
+            return ns.substring(with: m.range(at: 1))
+        }
+        if let serial = match("Serial code:\\s*([0-9A-Fa-f]+)") { parts.append("Serial " + serial) }
+        if let fw = match("Found\\s+\\S+\\s+(\\d+\\.\\d+\\.\\d+)") { parts.append("Firmware " + fw) }
+        return parts.joined(separator: " – ")
+    }
+
     let infoic: URL?
     let logicic: URL?
 
