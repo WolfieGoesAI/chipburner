@@ -139,7 +139,6 @@ cp "$WORK/ChipBurner" "$WORK/minipro" "$APP/Contents/MacOS/"
 cp "$INFOIC" "$APP/Contents/Resources/minipro/"
 cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 [ -n "${LOGICIC:-}" ] && cp "$LOGICIC" "$APP/Contents/Resources/minipro/"
-mkdir -p "$DIST" && [ -n "${LOGICIC:-}" ] && cp "$LOGICIC" "$DIST/data-logicic.xml" || true
 cp "$WORK/src/minipro-git/LICENSE"* "$APP/Contents/Resources/minipro/" 2>/dev/null || true
 cat > "$APP/Contents/Resources/minipro/SOURCE.txt" <<EOF
 This app runs minipro ($MINIPRO_DESC), licensed under the GNU GPL v3.

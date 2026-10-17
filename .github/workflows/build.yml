@@ -87,12 +87,12 @@ jobs:
         if: github.ref == 'refs/heads/main' && hashFiles('dist/screenshot.png') != ''
         continue-on-error: true
         run: |
-          mkdir -p /tmp/shot && cp dist/screenshot*.png /tmp/shot/ && (cp dist/data-*.xml /tmp/shot/ 2>/dev/null || true)
+          mkdir -p /tmp/shot && cp dist/screenshot*.png /tmp/shot/
           cd /tmp/shot
           git init -q -b screenshots
           git config user.name "github-actions"
           git config user.email "github-actions@users.noreply.github.com"
-          git add screenshot*.png $(ls data-*.xml 2>/dev/null)
+          git add screenshot*.png
           git commit -q -m "Screenshot of ${GITHUB_SHA::7}"
           git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" screenshots
 
