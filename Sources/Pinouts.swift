@@ -9,6 +9,9 @@ struct ChipPinout: Equatable {
     var notes: [String] = []
     /// Per pin, for logic chips: i input, o output, b bidirectional, c clock, g ground, v supply, n unused.
     var roles: [Character] = []
+    var package: Package = .dip
+
+    enum Package: Equatable { case dip, plcc32 }
 }
 
 enum Pinouts {
@@ -36,6 +39,29 @@ enum Pinouts {
             if has("^[A-Z]*93(C|LC|AA|S)?[0-9]") { return microwire }
             if has("^[A-Z]*25(Q|LC|AA|X|P|F|VF|PE|DF|C|FL|LQ|SF|CL|LV|L|U|B)?[0-9]") { return spiMemory }
         }
+        // PLCC32 memories: JEDEC numbers the pins like the 32-pin DIP; 28-pin chips leave 1, 12, 17 and 26 free.
+        if pkg.hasPrefix("PLCC32"), let size = size, size >= 8192, size <= 1048576 {
+            guard let dip = memoryPinout(name: name, pins: size >= 131072 ? 32 : 28, size: size, isSRAM: isSRAM) else { return nil }
+            var p = dip.pins
+            if p.count == 28 {
+                // DIP28 pin k → PLCC32: 1–10 → 2–11, 11–13 → 13–15, 14 → 16, 15–19 → 18–22, 20–22 → 23–25, 23–28 → 27–32
+                var q = [String](repeating: "NC", count: 32)
+                for k in 1...28 {
+                    let t: Int
+                    switch k {
+                    case 1...10: t = k + 1
+                    case 11...14: t = k + 2
+                    case 15...22: t = k + 3
+                    default: t = k + 4
+                    }
+                    q[t - 1] = p[k - 1]
+                }
+                p = q
+            }
+            return ChipPinout(title: dip.title + " – PLCC32", pins: p,
+                              notes: dip.notes + ["PLCC32 seen from above; pin 1 is in the middle of the top edge (the dot / bevelled corner side). Needs a PLCC32-to-DIP32 adapter in the ZIF socket."],
+                              package: .plcc32)
+        }
         guard isDIP else { return nil }
 
         if has("16V8") { return gal16v8 }
@@ -44,16 +70,33 @@ enum Pinouts {
         if has("20RA10") { return gal20ra10 }
 
         if has("^ATMEGA(8|48|88|168|328)(A|P|PA|PB|V|L)*$") { return mega328 }
-        if has("^ATTINY(13|25|45|85)(A|V)*$") { return tiny85 }
+        if has("^(ATMEGA(16|32|164|324|644|1284|8535)|AT90S8535|AT90LS8535)(A|P|PA|PB|V|L)*$") { return mega16 }
+        if has("^ATTINY(11|12|13|15|25|45|85)(A|V|L)*$") { return tiny85 }
+        if has("^ATTINY(24|44|84)(A|V)*$") { return tiny84 }
+        if has("^ATTINY(26|261|461|861)(A|V|L)*$") { return tiny861 }
         if has("^(ATTINY2313|AT90S2313|ATTINY4313)") { return tiny2313 }
         if has("^AT89C(1051|2051|4051)") { return at89c2051 }
         if has("^PIC16(L)?F(84|627|628|648)") { return pic16f628 }
         if has("^PIC12(L)?F(629|675|683)") { return pic12f675 }
+        // Standard 28- and 40-pin PIC16/PIC18 layouts (not the 3.3 V J-series or the motor-control parts).
+        let usb = has("^PIC18L?F(2455|2550|4455|4550|2458|2553|4458|4553)")
+        if has("^PIC16L?F(7[236]|73[7]|76[7]|87[036]A?|88[236])$") || (has("^PIC18L?F2[0-9]+[A-Z0-9]*$") && !has("J|^PIC18L?F2[34]31")) {
+            if pkgPins == nil || pkgPins == 28 { return pic28(usb: usb) }
+        }
+        if has("^PIC16L?F(7[47]|74[7]|77[7]|87[147]A?|88[47])$") || (has("^PIC18L?F4[0-9]+[A-Z0-9]*$") && !has("J|^PIC18L?F4[34]31")) {
+            if pkgPins == nil || pkgPins == 40 { return pic40(usb: usb) }
+        }
         if (pkgPins == nil || pkgPins == 40),
-           has("^(AT89(C|S|LV|LS)5[0-9]|AT89S8252|I?87C5[0-9]|P87C5|SST89|W78E5|SM89|80C51|8751)") { return mcs51 }
+           has("^(AT89(C|S|LV|LS)5[0-9]|AT89S825[23]|I?87C5[0-9]|I?8751|P87C5|P89C5|P89V5|SST89|W78E|W78C|W77E|SM89|80C51|8751)") { return mcs51 }
 
         guard let size = size, size > 0 else { return nil }
         let pins = pkgPins ?? (size <= 4096 ? 24 : size <= 0x10000 ? 28 : 32)
+        return memoryPinout(name: name, pins: pins, size: size, isSRAM: isSRAM)
+    }
+
+    /// DIP pinout of a parallel memory chip from its family, pin count and size.
+    static func memoryPinout(name: String, pins: Int, size: Int, isSRAM: Bool) -> ChipPinout? {
+        func has(_ pattern: String) -> Bool { name.range(of: pattern, options: .regularExpression) != nil }
         // Intel-style 28F flash and SST 28SF have different control pins, so they're left out.
         let eeprom = has("28(C|HC|LV)[0-9]") && !has("27")
         let flash = has("(29(F|C|EE|LV|SF)|39(SF|VF|LF)|49F)[0-9]")
@@ -156,7 +199,7 @@ enum Pinouts {
             return ChipPinout(title: "29F010 / 39SF010 flash (128K × 8)", pins: p, notes: [jedecNote])
         case (32, 262144):
             var p = base32(); set(&p, [1: "NC", 30: "A17", 31: "/WE"])
-            return ChipPinout(title: "29F020 / 39SF020 flash (256K × 8)", pins: p, notes: [jedecNote])
+            return ChipPinout(title: "29F020 / 39SF020 flash (256K × 8)", pins: p, notes: [jedecNote, "On 29F002-type chips pin 1 is /RESET."])
         case (32, 524288):
             var p = base32(); set(&p, [1: "A18", 30: "A17", 31: "/WE"])
             return ChipPinout(title: "29F040 / 39SF040 flash (512K × 8)", pins: p, notes: [jedecNote])
@@ -387,5 +430,38 @@ enum Pinouts {
         return ChipPinout(title: "\(display) – pin functions", pins: labels,
                           notes: ["Worked out from minipro's test vectors (in, out, clock, power); \"–\" = not used by the test. Check the data sheet for the signal names."],
                           roles: roles)
+    }
+
+    // MARK: More microcontrollers
+
+    static let mega16 = ChipPinout(title: "ATmega16 / 32 / 164 / 324 / 644 / 1284 / 8535 (DIP40)", pins: [
+        "PB0/T0", "PB1/T1", "PB2/INT2/AIN0", "PB3/OC0/AIN1", "PB4/SS", "PB5/MOSI", "PB6/MISO", "PB7/SCK", "RESET", "VCC",
+        "GND", "XTAL2", "XTAL1", "PD0/RXD", "PD1/TXD", "PD2/INT0", "PD3/INT1", "PD4/OC1B", "PD5/OC1A", "PD6/ICP1",
+        "PD7/OC2", "PC0/SCL", "PC1/SDA", "PC2/TCK", "PC3/TMS", "PC4/TDO", "PC5/TDI", "PC6/TOSC1", "PC7/TOSC2", "AVCC",
+        "GND", "AREF", "PA7/ADC7", "PA6/ADC6", "PA5/ADC5", "PA4/ADC4", "PA3/ADC3", "PA2/ADC2", "PA1/ADC1", "PA0/ADC0"],
+        notes: ["Alternate functions shown for the ATmega16/32; the others differ slightly (check the data sheet for timer pins)."])
+    static let tiny84 = ChipPinout(title: "ATtiny24 / 44 / 84 (DIP14)", pins: [
+        "VCC", "PB0/XTAL1", "PB1/XTAL2", "PB3/RESET", "PB2", "PA7", "PA6/MOSI", "PA5/MISO", "PA4/SCK", "PA3", "PA2", "PA1", "PA0", "GND"])
+    static let tiny861 = ChipPinout(title: "ATtiny26 / 261 / 461 / 861 (DIP20)", pins: [
+        "PB0/MOSI", "PB1/MISO", "PB2/SCK", "PB3", "VCC", "GND", "PB4/XTAL1", "PB5/XTAL2", "PB6", "PB7/RESET",
+        "PA7", "PA6", "PA5", "PA4", "AVCC", "AGND", "PA3/AREF", "PA2", "PA1", "PA0"])
+
+    static func pic28(usb: Bool) -> ChipPinout {
+        var p = ["MCLR/VPP", "RA0/AN0", "RA1/AN1", "RA2/AN2", "RA3/AN3", "RA4/T0CKI", "RA5/AN4", "VSS", "OSC1/RA7", "OSC2/RA6",
+                 "RC0", "RC1", "RC2/CCP1", "RC3/SCK/SCL", "RC4/SDI/SDA", "RC5/SDO", "RC6/TX", "RC7/RX", "VSS", "VDD",
+                 "RB0/INT", "RB1", "RB2", "RB3/PGM", "RB4", "RB5", "RB6/PGC", "RB7/PGD"]
+        if usb { p[13] = "VUSB"; p[14] = "RC4/D-"; p[15] = "RC5/D+" }
+        return ChipPinout(title: "PIC16F / PIC18F, 28 pins", pins: p,
+                          notes: ["Standard 28-pin PIC layout; some parts have RE3 on pin 1 or other alternate functions – check the data sheet."])
+    }
+
+    static func pic40(usb: Bool) -> ChipPinout {
+        var p = ["MCLR/VPP", "RA0/AN0", "RA1/AN1", "RA2/AN2", "RA3/AN3", "RA4/T0CKI", "RA5/AN4", "RE0/RD", "RE1/WR", "RE2/CS",
+                 "VDD", "VSS", "OSC1", "OSC2", "RC0", "RC1", "RC2/CCP1", "RC3/SCK/SCL", "RD0", "RD1",
+                 "RD2", "RD3", "RC4/SDI/SDA", "RC5/SDO", "RC6/TX", "RC7/RX", "RD4", "RD5", "RD6", "RD7",
+                 "VSS", "VDD", "RB0/INT", "RB1", "RB2", "RB3/PGM", "RB4", "RB5", "RB6/PGC", "RB7/PGD"]
+        if usb { p[17] = "VUSB"; p[22] = "RC4/D-"; p[23] = "RC5/D+" }
+        return ChipPinout(title: "PIC16F / PIC18F, 40 pins", pins: p,
+                          notes: ["Standard 40-pin PIC layout; some parts have RE3 on pin 1 or other alternate functions – check the data sheet."])
     }
 }

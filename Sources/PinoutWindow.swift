@@ -10,7 +10,13 @@ final class PinoutView: NSView {
 
     override var isFlipped: Bool { true }
 
+    // PLCC32 geometry
+    private let plccW: CGFloat = 210, plccH: CGFloat = 250, plccLabel: CGFloat = 96
+
     override var intrinsicContentSize: NSSize {
+        if pinout?.package == .plcc32 {
+            return NSSize(width: plccW + 2 * (labelWidth + 20), height: plccH + 2 * (plccLabel + 14))
+        }
         let half = (pinout?.pins.count ?? 0) / 2
         return NSSize(width: bodyWidth + 2 * (labelWidth + 24), height: CGFloat(half) * pitch + 40)
     }
@@ -39,6 +45,7 @@ final class PinoutView: NSView {
         NSColor.textBackgroundColor.setFill()
         bounds.fill()
         guard let p = pinout, p.pins.count >= 2 else { return }
+        if p.package == .plcc32 && p.pins.count == 32 { drawPLCC(p); return }
         let half = p.pins.count / 2
         let bodyX = labelWidth + 24
         let top: CGFloat = 16
@@ -86,6 +93,96 @@ final class PinoutView: NSView {
     }
 }
 
+extension PinoutView {
+    /// PLCC32 from above: pin 1 in the middle of the top edge, numbers running anticlockwise.
+    fileprivate func drawPLCC(_ p: ChipPinout) {
+        let font = NSFont.userFixedPitchFont(ofSize: 12) ?? .systemFont(ofSize: 12)
+        let numAttrs: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .regular), .foregroundColor: NSColor.secondaryLabelColor]
+        let W: CGFloat = 210, H: CGFloat = 250, label: CGFloat = 96
+        let body = NSRect(x: bounds.midX - W / 2, y: label + 14, width: W, height: H)
+        // Body with the bevelled index corner (top left).
+        let path = NSBezierPath()
+        path.move(to: NSPoint(x: body.minX + 18, y: body.minY))
+        path.line(to: NSPoint(x: body.maxX, y: body.minY))
+        path.line(to: NSPoint(x: body.maxX, y: body.maxY))
+        path.line(to: NSPoint(x: body.minX, y: body.maxY))
+        path.line(to: NSPoint(x: body.minX, y: body.minY + 18))
+        path.close()
+        NSColor.controlBackgroundColor.blended(withFraction: 0.15, of: .black)?.setFill()
+        path.fill()
+        NSColor.secondaryLabelColor.setStroke()
+        path.lineWidth = 1.5
+        path.stroke()
+
+        let top = [4, 3, 2, 1, 32, 31, 30], bottom = [14, 15, 16, 17, 18, 19, 20]
+        let left = Array(5...13), right = Array((21...29).reversed())
+        let hStep = (W - 24) / 7, vStep = (H - 24) / 9
+
+        func colorFor(_ pin: Int) -> NSColor {
+            let l = p.pins[pin - 1].uppercased()
+            if l == "VCC" || l == "VDD" { return .systemRed }
+            if l == "GND" || l == "VSS" { return .systemBlue }
+            if l.contains("VPP") { return .systemOrange }
+            if l == "NC" { return .tertiaryLabelColor }
+            return .labelColor
+        }
+        func text(_ pin: Int) -> (NSString, [NSAttributedString.Key: Any]) {
+            (p.pins[pin - 1] as NSString, [.font: font, .foregroundColor: colorFor(pin)])
+        }
+        func vertical(_ s: NSString, _ attrs: [NSAttributedString.Key: Any], at pt: NSPoint, up: Bool) {
+            guard let ctx = NSGraphicsContext.current else { return }
+            ctx.saveGraphicsState()
+            let t = NSAffineTransform()
+            t.translateX(by: pt.x, yBy: pt.y)
+            t.rotate(byDegrees: up ? -90 : 90)
+            t.concat()
+            let h = s.size(withAttributes: attrs).height
+            s.draw(at: NSPoint(x: 0, y: -h / 2), withAttributes: attrs)
+            ctx.restoreGraphicsState()
+        }
+
+        NSColor.tertiaryLabelColor.setFill()
+        for (i, pin) in top.enumerated() {
+            let x = body.minX + 12 + (CGFloat(i) + 0.5) * hStep
+            NSRect(x: x - 4, y: body.minY - 10, width: 8, height: 10).fill()
+            let (s, a) = text(pin); vertical(s, a, at: NSPoint(x: x, y: body.minY - 14), up: true)
+            let n = "\(pin)" as NSString
+            n.draw(at: NSPoint(x: x - n.size(withAttributes: numAttrs).width / 2, y: body.minY + 3), withAttributes: numAttrs)
+            NSColor.tertiaryLabelColor.setFill()
+        }
+        for (i, pin) in bottom.enumerated() {
+            let x = body.minX + 12 + (CGFloat(i) + 0.5) * hStep
+            NSRect(x: x - 4, y: body.maxY, width: 8, height: 10).fill()
+            let (s, a) = text(pin); vertical(s, a, at: NSPoint(x: x, y: body.maxY + 14), up: false)
+            let n = "\(pin)" as NSString
+            n.draw(at: NSPoint(x: x - n.size(withAttributes: numAttrs).width / 2, y: body.maxY - 14), withAttributes: numAttrs)
+            NSColor.tertiaryLabelColor.setFill()
+        }
+        for (i, pin) in left.enumerated() {
+            let y = body.minY + 12 + (CGFloat(i) + 0.5) * vStep
+            NSRect(x: body.minX - 10, y: y - 4, width: 10, height: 8).fill()
+            let (s, a) = text(pin)
+            s.draw(at: NSPoint(x: body.minX - 16 - s.size(withAttributes: a).width, y: y - 8), withAttributes: a)
+            ("\(pin)" as NSString).draw(at: NSPoint(x: body.minX + 4, y: y - 6), withAttributes: numAttrs)
+            NSColor.tertiaryLabelColor.setFill()
+        }
+        for (i, pin) in right.enumerated() {
+            let y = body.minY + 12 + (CGFloat(i) + 0.5) * vStep
+            NSRect(x: body.maxX, y: y - 4, width: 10, height: 8).fill()
+            let (s, a) = text(pin)
+            s.draw(at: NSPoint(x: body.maxX + 16, y: y - 8), withAttributes: a)
+            let n = "\(pin)" as NSString
+            n.draw(at: NSPoint(x: body.maxX - 4 - n.size(withAttributes: numAttrs).width, y: y - 6), withAttributes: numAttrs)
+            NSColor.tertiaryLabelColor.setFill()
+        }
+        // Pin-1 marker under pin 1.
+        NSColor.secondaryLabelColor.setFill()
+        let x1 = body.minX + 12 + 3.5 * hStep
+        NSBezierPath(ovalIn: NSRect(x: x1 - 3.5, y: body.minY + 16, width: 7, height: 7)).fill()
+        _ = label
+    }
+}
+
 final class PinoutWindowController: NSWindowController {
     private var retainSelf: PinoutWindowController?
 
@@ -101,7 +198,7 @@ final class PinoutWindowController: NSWindowController {
 
         let title = NSTextField(labelWithString: pinout.title)
         title.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
-        var noteLines = ["Top view, notch up. In the programmer's ZIF socket: lever down, pin 1 at the lever end, chip bottom-aligned."]
+        var noteLines = pinout.package == .plcc32 ? [] : ["Top view, notch up. In the programmer's ZIF socket: lever down, pin 1 at the lever end, chip bottom-aligned."]
         noteLines += pinout.notes
         let notes = NSTextField(wrappingLabelWithString: noteLines.joined(separator: "\n"))
         notes.font = .systemFont(ofSize: NSFont.smallSystemFontSize)

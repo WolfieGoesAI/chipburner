@@ -1717,6 +1717,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             snap(pw.window, "-pinout.png")
             pw.close()
         }
+        if let p = Pinouts.find(chip: "AM29F040@PLCC32", size: 524288) {
+            let pw = PinoutWindowController(chip: "AM29F040@PLCC32", pinout: p)
+            pw.showWindow(nil)
+            snap(pw.window, "-pinout-plcc.png")
+            pw.close()
+        }
         if let url = Minipro.shared.logicic, let xml = try? String(contentsOf: url) {
             for (chip, suffix) in [("74161", "-pinout-logic.png"), ("4520", "-pinout-logic2.png")] {
                 if let v = Pinouts.logicVectors(xml: xml, name: chip),

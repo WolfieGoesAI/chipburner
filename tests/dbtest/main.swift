@@ -300,6 +300,26 @@ if let xml = try? String(contentsOfFile: args[2]) {
     expect(Pinouts.logicBase("SN74LS00N") == "7400" && Pinouts.logicBase("74HCT245") == "74245" && Pinouts.logicBase("CD4011BE") == "4011", "logic part numbers")
 }
 
+// PLCC32 and the extra microcontroller layouts
+do {
+    let c010 = Pinouts.find(chip: "AM27C010@PLCC32", size: 131072)
+    expect(c010?.package == .plcc32 && c010?.pins[0] == "VPP" && c010?.pins[15] == "GND" && c010?.pins[31] == "VCC" && c010?.pins[30] == "/PGM", "PLCC32 27C010")
+    let c256 = Pinouts.find(chip: "AT27C256R@PLCC32", size: 32768)
+    expect(c256?.pins.count == 32 && c256?.pins[0] == "NC" && c256?.pins[1] == "VPP" && c256?.pins[10] == "A0" && c256?.pins[11] == "NC"
+           && c256?.pins[12] == "D0" && c256?.pins[15] == "GND" && c256?.pins[16] == "NC" && c256?.pins[17] == "D3"
+           && c256?.pins[22] == "/CE" && c256?.pins[25] == "NC" && c256?.pins[26] == "A11" && c256?.pins[31] == "VCC", "PLCC32 27C256 (28-pin chip)")
+    expect(Pinouts.find(chip: "SST39SF040@PLCC32", size: 524288)?.pins[0] == "A18", "PLCC32 39SF040")
+    expect(Pinouts.find(chip: "ATMEGA32A@DIP40", size: 32768)?.pins[9] == "VCC", "ATmega32 (DIP40)")
+    expect(Pinouts.find(chip: "ATMEGA644PA", size: 65536)?.title.contains("644") == true, "ATmega644PA")
+    expect(Pinouts.find(chip: "ATTINY84", size: 8192)?.pins[13] == "GND", "ATtiny84")
+    expect(Pinouts.find(chip: "ATTINY861", size: 8192)?.pins[4] == "VCC", "ATtiny861")
+    expect(Pinouts.find(chip: "PIC16F877A", size: 16384)?.pins.count == 40, "PIC16F877A (40 pins)")
+    expect(Pinouts.find(chip: "PIC16F876A", size: 16384)?.pins.count == 28, "PIC16F876A (28 pins)")
+    expect(Pinouts.find(chip: "PIC18F25K22", size: 32768)?.pins[19] == "VDD", "PIC18F25K22 (28 pins)")
+    expect(Pinouts.find(chip: "PIC18F4550", size: 32768)?.pins[17] == "VUSB", "PIC18F4550 USB pins")
+    expect(Pinouts.find(chip: "PIC18F24J10", size: 16384) == nil, "no pinout for J-series PICs")
+}
+
 // Pinout coverage for the TL866A's chips (printed for the build notes).
 do {
     for (kind, label) in [(ChipInfo.Kind.memory, "memory"), (.mcu, "MCU"), (.pld, "PLD"), (.sram, "SRAM")] {
