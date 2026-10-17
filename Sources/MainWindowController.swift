@@ -201,14 +201,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         let small = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
         let controlWidth: CGFloat = 240
         let voltButton = button("Voltages…", #selector(editVoltages(_:)))
-        let settingsButton = button("Settings…", #selector(showSettings(_:)))
-        for c in [memoryPopup, connectionPopup, voltButton, settingsButton] as [NSControl] {
+        let settingsButton = button("Options…", #selector(showSettings(_:)))
+        for c in [memoryPopup, connectionPopup] as [NSControl] {
             c.controlSize = .small
             c.font = small
             c.widthAnchor.constraint(equalToConstant: controlWidth).isActive = true
         }
-        configButton.controlSize = .small
-        configButton.font = small
+        // Fuses & Locks…, Voltages… and Options… form one right-hand column of equal-width buttons.
+        for b in [configButton, voltButton, settingsButton] {
+            b.controlSize = .small
+            b.font = small
+        }
         for l in [voltageLabel, settingsLabel] {
             l.font = small
             l.textColor = .secondaryLabelColor
@@ -221,11 +224,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             return l
         }
         let empty = { () -> NSView in NSView() }
-        // Connection and Memory share the first row; Voltages and Options line up under Connection.
+        // Connection and Memory share the first row. The Voltages and Options rows show their current
+        // setting right after the label, with their buttons at the end under Fuses & Locks….
         let grid = NSGridView(views: [
             [label("Connection:"), connectionPopup, label("Memory:"), memoryPopup, configButton],
-            [label("Voltages:"), voltButton, voltageLabel, empty(), empty()],
-            [label("Options:"), settingsButton, settingsLabel, empty(), empty()],
+            [label("Voltages:"), voltageLabel, empty(), empty(), voltButton],
+            [label("Options:"), settingsLabel, empty(), empty(), settingsButton],
         ])
         grid.rowSpacing = 6
         grid.columnSpacing = 8
@@ -235,10 +239,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         grid.column(at: 2).xPlacement = .trailing
         grid.column(at: 3).xPlacement = .leading
         grid.column(at: 2).leadingPadding = 12
-        grid.column(at: 4).xPlacement = .leading
+        grid.column(at: 4).xPlacement = .fill      // the three buttons get the same width
         for r in 1...2 {
-            grid.row(at: r).mergeCells(in: NSRange(location: 2, length: 3))
-            grid.cell(atColumnIndex: 2, rowIndex: r).xPlacement = .leading
+            grid.row(at: r).mergeCells(in: NSRange(location: 1, length: 3))
+            grid.cell(atColumnIndex: 1, rowIndex: r).xPlacement = .leading
         }
         updateSettingsLabel()
 
@@ -1652,7 +1656,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         }
         walk(content)
         print("SMOKE window visible=\(w.isVisible) frame=\(NSStringFromRect(w.frame)) content=\(NSStringFromRect(content.frame)) buttons=\(buttons.count)")
-        for t in ["Read", "Stop", "Hardware…", "Save…", "Open…", "Fuses & Locks…", "Chip Test…", "Ident EPROM…", "Ident Logic…", "Chip Info", "Logic Test", "Auto…", "Voltages…", "Settings…"] {
+        for t in ["Read", "Stop", "Hardware…", "Save…", "Open…", "Fuses & Locks…", "Chip Test…", "Ident EPROM…", "Ident Logic…", "Chip Info", "Logic Test", "Auto…", "Voltages…", "Options…"] {
             if let r = buttons[t] { print(String(format: "SMOKE %@ x=%.0f..%.0f y=%.0f..%.0f", t, r.minX, r.maxX, r.minY, r.maxY)) }
             else { print("SMOKE missing button: \(t)") }
         }
