@@ -111,6 +111,7 @@ final class ConfigWindowController: NSWindowController {
                 set(f, f.defaultValue)
             }
             grid.column(at: 0).xPlacement = .trailing
+            grid.setContentHuggingPriority(.required, for: .horizontal)   // keep rows left-aligned
             grid.rowAlignment = .none
             for r in 0..<grid.numberOfRows { grid.row(at: r).yPlacement = .center }
             let read = NSButton(title: "Read", target: self, action: #selector(readSection(_:)))
