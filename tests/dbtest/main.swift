@@ -151,6 +151,44 @@ let dramish = logicAll.filter { $0.range(of: "^(41|44|TMS4|MK4|HM50|KM41|MB81|D4
 print("DRAMLOGIC: \(dramish.count): \(dramish.prefix(40).joined(separator: " "))")
 let notTTL = logicAll.filter { $0.range(of: "^(74|54|40|45|CD4|HEF|MC14)", options: .regularExpression) == nil }
 print("LOGICNAMES non-74/4000 (\(notTTL.count)): \(notTTL.prefix(80).joined(separator: " "))")
+// Chip tests: simulated faulty RAMs and EPROM reads
+func simulateRAM(size: Int, write: Data, stuckAddressBit: Int? = nil, stuckHigh: Bool = false, dataBitStuck0: Int? = nil) -> Data {
+    var cells = Data(repeating: 0, count: size)
+    func map(_ a: Int) -> Int {
+        guard let k = stuckAddressBit else { return a }
+        return stuckHigh ? (a | (1 << k)) : (a & ~(1 << k))
+    }
+    for a in 0..<size { cells[map(a)] = write[a] }
+    var out = Data(count: size)
+    for a in 0..<size {
+        var v = cells[map(a)]
+        if let d = dataBitStuck0 { v &= ~UInt8(1 << d) }
+        out[a] = v
+    }
+    return out
+}
+let ramSize = 0x2000
+let addrPat = ChipTests.Pattern.address.data(count: ramSize)
+let goodRAM = ChipTests.compare(expected: addrPat, got: simulateRAM(size: ramSize, write: addrPat), pattern: .address)
+expect(goodRAM.ok, "chip test: a good RAM passes the address pattern")
+let a5low = ChipTests.compare(expected: addrPat, got: simulateRAM(size: ramSize, write: addrPat, stuckAddressBit: 5), pattern: .address)
+expect(!a5low.ok && a5low.addressLineSuspects == [5], "chip test: A5 stuck low is found (\(a5low.addressLineSuspects))")
+let a11high = ChipTests.compare(expected: addrPat, got: simulateRAM(size: ramSize, write: addrPat, stuckAddressBit: 11, stuckHigh: true), pattern: .address)
+expect(a11high.addressLineSuspects == [11], "chip test: A11 stuck high is found (\(a11high.addressLineSuspects))")
+let ffPat = ChipTests.Pattern.ones.data(count: ramSize)
+let d3 = ChipTests.compare(expected: ffPat, got: simulateRAM(size: ramSize, write: ffPat, dataBitStuck0: 3), pattern: .ones)
+expect(d3.badBytes == ramSize && d3.badBits == 0x08 && d3.addressLineSuspects.isEmpty, "chip test: D3 stuck at 0 shows as bit D3 in every byte")
+var shaky = ChipTests.Pattern.address.data(count: 1024); var shaky2 = shaky; shaky2[100] ^= 0x04; shaky2[700] ^= 0x04
+let st = ChipTests.stability([shaky, shaky2, shaky])
+expect(st.unstableBytes == 2 && st.unstableBits == 0x04, "chip test: unstable bits between reads are found")
+var img = Data((0..<0x4000).map { UInt8(truncatingIfNeeded: $0 &* 31 ^ ($0 >> 5)) }); img.append(img)
+let rep = ChipTests.analyse(img)
+expect(rep.repeatsEvery == 0x4000, "chip test: a 16 KB image repeated in a 32 KB chip is spotted (\(rep.repeatsEvery ?? 0))")
+expect(ChipTests.analyse(Data(repeating: 0xFF, count: 4096)).blank, "chip test: blank chip recognised")
+let ascii = ChipTests.analyse(Data((0..<4096).map { UInt8($0 % 96 + 32) }))
+expect(ascii.alwaysZero == 0x80 && ChipTests.hints(ascii).contains { $0.contains("7-bit") }, "chip test: 7-bit data recognised")
+_ = shaky.count; shaky = Data()
+
 let plds = db.names(of: .pld, programmer: "TL866A")
 print("  PLDs for TL866A (\(plds.count)): \(plds.joined(separator: " "))")
 

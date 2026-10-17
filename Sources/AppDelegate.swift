@@ -87,6 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         chipMenu.addItem(withTitle: "Search Chips…", action: #selector(MainWindowController.searchChips(_:)), keyEquivalent: "f")
         chipMenu.addItem(withTitle: "Ident EPROM…", action: #selector(MainWindowController.identifyChip(_:)), keyEquivalent: "i")
         chipMenu.addItem(withTitle: "Fuses, User ID & Lock Bits…", action: #selector(MainWindowController.openConfigWindow(_:)), keyEquivalent: "u")
+        chipMenu.addItem(withTitle: "Chip Test (SRAM / EPROM health)…", action: #selector(MainWindowController.openChipTest(_:)), keyEquivalent: "")
         chipMenu.addItem(.separator())
         chipMenu.addItem(withTitle: "Read", action: #selector(MainWindowController.readChip(_:)), keyEquivalent: "r")
         chipMenu.addItem(withTitle: "Blank Check", action: #selector(MainWindowController.blankCheck(_:)), keyEquivalent: "b")

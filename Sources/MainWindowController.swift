@@ -39,6 +39,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     private var stopButton: NSButton!
     private var eraseButton: NSButton!
     private lazy var configButton: NSButton = button("Fuses & Locks…", #selector(openConfigWindow(_:)))
+    private lazy var chipTestButton: NSButton = button("Chip Test…", #selector(openChipTest(_:)))
     private let skipID = NSButton(checkboxWithTitle: "Skip chip ID check", target: nil, action: nil)
     private let allowSize = NSButton(checkboxWithTitle: "Allow file size mismatch", target: nil, action: nil)
     private let skipErase = NSButton(checkboxWithTitle: "Don't erase before programming", target: nil, action: nil)
@@ -165,7 +166,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         let chipRow = NSGridView(views: [
             [bold("Chip:"), chipField, button("Search…", #selector(searchChips(_:))),
              button("Ident EPROM…", #selector(identifyChip(_:))), button("Chip Info", #selector(chipInfo(_:))), configButton, NSView()],
-            [NSView(), NSView(), NSView(), logicID, logic, NSView(), NSView()],
+            [NSView(), NSView(), NSView(), logicID, logic, chipTestButton, NSView()],
         ])
         chipRow.rowSpacing = 6
         chipRow.columnSpacing = 8
@@ -519,6 +520,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     private func updateEnabledState() {
         actionButtons.forEach { $0.isEnabled = !isBusy }
         configButton.isEnabled = !isBusy && currentConfig != nil
+        let testKind = chipDetails.map { $0.kind }
+        chipTestButton.isEnabled = !isBusy && (testKind == .sram || testKind == .memory) && (chipDetails?.codeSize ?? 0) > 0
+        chipTestButton.toolTip = chipTestButton.isEnabled
+            ? (testKind == .sram ? "Pattern test for this SRAM." : "Health check for this EPROM/EEPROM/flash: repeated reads, content analysis and an optional write test.")
+            : "Chip Test works with SRAM and with EPROM, EEPROM and flash memory chips."
         configButton.toolTip = currentConfig != nil ? "Read and write this chip's fuses, user ID and lock bits in a separate window."
                                                     : "The selected chip has no fuses, user ID or lock bits in the database."
         if let b = eraseButton {
@@ -1350,7 +1356,40 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         let c = ConfigWindowController(chip: chip, config: config, wordSize: info?.wordSize ?? 1,
                                        lockWriteOnly: info?.lockBitWriteOnly ?? false, baseArgs: base) { [weak self] title, args, done in
             guard let self = self else { return }
-            if self.isBusy { NSSound.beep(); return }
+            if self.isBusy { NSSound.beep(); done(false, "Another job is still running."); return }
+            self.runJob(title, args, then: done)
+        }
+        c.showWindow(nil)
+    }
+
+    @objc func openChipTest(_ sender: Any?) {
+        guard requireChip(), connectionAllowed(), !isBusy else { return }
+        guard let info = chipDetails, info.codeSize > 0, info.kind == .sram || info.kind == .memory else {
+            showError("Chip Test isn't available for \(chip).", "It works with SRAM and with EPROM, EEPROM and flash memory chips.")
+            return
+        }
+        var readArgs = ["-p", chip] + connectionArgs
+        if skipID.state == .on { readArgs.append("-x") }
+        var writeArgs = ["-p", chip] + connectionArgs
+        if skipID.state == .on { writeArgs.append("-y") }
+        if allowSize.state == .on { writeArgs.append("-s") }
+        writeArgs += protectionArgs(.write)
+        let method = eraseMethod
+        let canWrite: Bool
+        let note: String
+        switch method {
+        case .command, .fill: canWrite = info.kind == .memory && !Self.isUVEPROM(chip); note = ""
+        case .unavailable: canWrite = false; note = Self.isUVEPROM(chip) ? "not for UV EPROMs – they can only be erased with UV light" : "not available for this chip"
+        }
+        let setup = ChipTestWindowController.Setup(
+            chip: chip, kind: info.kind == .sram ? .sram : .memory, size: info.codeSize,
+            readArgs: readArgs, writeArgs: writeArgs, canWriteTest: canWrite,
+            writeTestNote: canWrite ? "" : note,
+            buffer: (!bufferIsText && buffer.count == info.codeSize) ? buffer : nil,
+            batteryBacked: chip.uppercased().range(of: "^(DS12|BQ40)", options: .regularExpression) != nil)
+        let c = ChipTestWindowController(setup: setup) { [weak self] title, args, done in
+            guard let self = self else { return }
+            if self.isBusy { NSSound.beep(); done(false, "Another job is still running."); return }
             self.runJob(title, args, then: done)
         }
         c.showWindow(nil)
