@@ -40,6 +40,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     private var eraseButton: NSButton!
     private lazy var configButton: NSButton = button("Fuses & Locks…", #selector(openConfigWindow(_:)))
     private lazy var chipTestButton: NSButton = button("Chip Test…", #selector(openChipTest(_:)))
+    private lazy var logicTestButton: NSButton = button("Logic Test", #selector(logicTest(_:)))
     private let skipID = NSButton(checkboxWithTitle: "Skip chip ID check", target: nil, action: nil)
     private let allowSize = NSButton(checkboxWithTitle: "Allow file size mismatch", target: nil, action: nil)
     private let skipErase = NSButton(checkboxWithTitle: "Don't erase before programming", target: nil, action: nil)
@@ -160,7 +161,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         chipField.placeholderString = "e.g. AM27C256@DIP28 – use Search or Ident EPROM"
         chipField.delegate = self
         chipField.widthAnchor.constraint(greaterThanOrEqualToConstant: 300).isActive = true
-        let logic = button("Logic Test", #selector(logicTest(_:)))
+        let logic = logicTestButton
         let logicID = button("Ident Logic…", #selector(identifyLogic(_:)))
         // Two rows so Ident Logic sits under Ident EPROM and Logic Test under Chip Info.
         let chipRow = NSGridView(views: [
@@ -521,6 +522,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         actionButtons.forEach { $0.isEnabled = !isBusy }
         configButton.isEnabled = !isBusy && currentConfig != nil
         let testKind = chipDetails.map { $0.kind }
+        logicTestButton.isEnabled = !isBusy && testKind == .logic
+        logicTestButton.toolTip = logicTestButton.isEnabled ? "Runs the logic test vectors for this chip."
+            : "Logic Test works with logic chips (74xx, 40xx …). Select one with Search or Ident Logic."
         chipTestButton.isEnabled = !isBusy && (testKind == .sram || testKind == .memory) && (chipDetails?.codeSize ?? 0) > 0
         chipTestButton.toolTip = chipTestButton.isEnabled
             ? (testKind == .sram ? "Pattern test for this SRAM." : "Health check for this EPROM/EEPROM/flash: repeated reads, content analysis and an optional write test.")
