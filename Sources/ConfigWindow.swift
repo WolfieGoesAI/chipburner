@@ -70,8 +70,6 @@ final class ConfigWindowController: NSWindowController {
         views.append(intro)
 
         for section in activeSections {
-            let box = NSBox()
-            box.title = section.rawValue
             let grid = NSGridView()
             grid.rowSpacing = 6
             grid.columnSpacing = 10
@@ -130,14 +128,19 @@ final class ConfigWindowController: NSWindowController {
             spacer.setContentHuggingPriority(NSLayoutConstraint.Priority(rawValue: 1), for: .horizontal)
             let buttons = NSStackView(views: [spacer, defaults, read, write])
             buttons.orientation = .horizontal
-            let inner = NSStackView(views: [grid, buttons])
+            // A heading and a separator line instead of an NSBox, which doesn't size itself to its
+            // contents under Auto Layout (the sections collapsed on top of each other).
+            let heading = NSTextField(labelWithString: section.rawValue)
+            heading.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
+            let separator = NSBox()
+            separator.boxType = .separator
+            let inner = NSStackView(views: [heading, grid, buttons])
             inner.orientation = .vertical
             inner.alignment = .leading
             inner.spacing = 8
-            inner.edgeInsets = NSEdgeInsets(top: 4, left: 8, bottom: 6, right: 8)
-            box.contentView = inner
-            buttons.widthAnchor.constraint(equalTo: inner.widthAnchor, constant: -16).isActive = true
-            views.append(box)
+            buttons.widthAnchor.constraint(equalTo: inner.widthAnchor).isActive = true
+            views.append(separator)
+            views.append(inner)
         }
 
         let readAll = NSButton(title: "Read All", target: self, action: #selector(readAll(_:)))
