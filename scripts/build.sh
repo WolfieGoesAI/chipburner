@@ -236,7 +236,6 @@ diag "minipro source" "$MINIPRO_DESC"$'\n'"$("$APP/Contents/MacOS/minipro" --ver
 diag "Test-related chip types" "$(grep -E '^(SRAM|DRAMLOGIC|LOGICNAMES|TL866A entries)' <<<"$DBT")"
 diag "get_fuse_value" "$(grep -rn -A40 '^int get_fuse_value\|^static int get_fuse_value' "$WORK/src/minipro-git/src/" | cut -c1-200 | sed 's|.*/src/||' | head -60)"
 diag "About box info" "$(plutil -p "$APP/Contents/Info.plist" | grep -E 'ChipBurner|Version|Copyright')"
-diag "MCU families" "$(python3 "$ROOT/scripts/mcu_families.py" "$INFOIC" 2>&1 | head -60 | cut -c1-330)"
 diag "Fuses & Locks families" "$(grep -E '^(FL|FUSES)' <<<"$DBT")"
 printf '%s' "$DIAG" > "$ROOT/diag.txt"
 
