@@ -1188,7 +1188,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             return nil
         }
         let url = tempURL("buffer.\(m.ext)")
-        do { try buffer.write(to: url); return url } catch {
+        var out = buffer
+        if m.ext == "conf" {
+            // minipro splits its config file at whitespace, so "hfuse = 0xd9" must become "hfuse=0xd9".
+            let text = String(decoding: buffer, as: UTF8.self)
+            out = Data(text.replacingOccurrences(of: "[ \\t]*=[ \\t]*", with: "=", options: .regularExpression).utf8)
+        }
+        do { try out.write(to: url); return url } catch {
             showError("Could not write a temporary file.", error.localizedDescription)
             return nil
         }
