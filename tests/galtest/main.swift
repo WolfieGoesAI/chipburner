@@ -269,6 +269,45 @@ if pr.failingVectors == [1] && pr.errors == 1 && !pr.passed { vecPassed += 1; pr
 else { vecFailed += 1; print("FAIL logic test result parsing: \(pr.failingVectors) \(pr.errors)") }
 if !LogicTest(name: "x", pins: 14, voltage: "5V", vectors: [Array("00H00H0H00H00V")]).problems().isEmpty { vecPassed += 1; print("ok   a vector without ground is rejected") }
 else { vecFailed += 1; print("FAIL a vector without ground was accepted") }
+// PAL readout → GAL clone, with simulated PALs.
+func simulatedTable(_ t: PalReadout.PalType, terms: [[PalReadout.Cube]], activeLow: Bool) -> [UInt16] {
+    (0..<(1 << t.inputs.count)).map { k in
+        var bits: UInt16 = 0
+        for (i, cubes) in terms.enumerated() {
+            var v = cubes.contains { k & $0.mask == $0.value & $0.mask }
+            if activeLow { v = !v }
+            if v { bits |= 1 << UInt16(i) }
+        }
+        return bits
+    }
+}
+var rng: UInt64 = 0xC0FFEE
+func rand(_ n: Int) -> Int { rng = rng &* 6364136223846793005 &+ 1442695040888963407; return Int((rng >> 33) % UInt64(n)) }
+func randomTerms(_ t: PalReadout.PalType, perOutput: Int) -> [[PalReadout.Cube]] {
+    t.outputs.map { _ in (0..<perOutput).map { _ in
+        var mask = 0
+        for _ in 0..<(2 + rand(3)) { mask |= 1 << rand(t.inputs.count) }
+        return PalReadout.Cube(mask: mask, value: rand(1 << t.inputs.count))
+    } }
+}
+for (t, low, per) in [(PalReadout.types[0], false, 2), (PalReadout.types[0], true, 2), (PalReadout.types[1], false, 4), (PalReadout.types[3], false, 7)] {
+    let table = simulatedTable(t, terms: randomTerms(t, perOutput: per), activeLow: low)
+    let label = "\(t.name.components(separatedBy: " ").first!)\(low ? " (active-low)" : "")"
+    do {
+        let c = try PalReadout.makeClone(t, table: table, palName: label)
+        vecPassed += 1; print("ok   PAL clone \(label): GAL16V8 reproduces all \(table.count) rows (\(c.equations.count) outputs)")
+    } catch { vecFailed += 1; print("FAIL PAL clone \(label): \(error)") }
+}
+let palOut = "      1  2  3  4  5  6  7  8  9  10 11 12 13 14 15 16 17 18 19 20\n" +
+    "0000: 0  0  0  0  0  0  0  0  0  G  0  L  L- L  L  L  L  L  L- V  \n" +
+    "0001: 1  0  0  0  0  0  0  0  0  G  0  L- L  L  L  L  L  L  L  V  \n" +
+    "Logic test failed: 3 errors encountered."
+let parsed = PalReadout.parseTable(palOut, type: PalReadout.types[0], expected: 2)
+if parsed == [0b1000_0010, 0b0000_0001] { vecPassed += 1; print("ok   PAL readout table parsing") }
+else { vecFailed += 1; print("FAIL PAL readout table parsing: \(String(describing: parsed))") }
+let pv = PalReadout.vectors(PalReadout.types[0], range: 5..<6)[0]
+if String(pv) == "101000000G0LLLLLLLLV" { vecPassed += 1; print("ok   PAL readout vectors") }
+else { vecFailed += 1; print("FAIL PAL readout vectors: \(String(pv))") }
 print("galtest vectors: \(vecPassed) passed, \(vecFailed) failed")
 print("galtest assemble: \(asmPassed) passed, \(asmFailed) failed; errors: \(errPassed) passed, \(errFailed) failed")
 let allOK = failed == 0 && passed > 0 && asmFailed == 0 && asmPassed > 0 && errFailed == 0 && errPassed > 0 && vecFailed == 0 && vecPassed > 0

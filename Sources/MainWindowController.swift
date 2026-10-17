@@ -242,8 +242,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         bufferLabel.isSelectable = true
         let saveHex = button("Save…", #selector(saveFile(_:)))
         let fileRow = row([bufferLabel, spacer(),
-                           button("Load…", #selector(openFile(_:))),
                            button("JED…", #selector(showPLDMenu(_:))),
+                           button("Load…", #selector(openFile(_:))),
                            saveHex])
 
         // Hardware… sits at the right edge under Stop and above Save…, centred between them.
@@ -1323,6 +1323,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         m.addItem(.separator())
         m.addItem(withTitle: "GAL Functional Test…", action: #selector(galFunctionalTest(_:)), keyEquivalent: "")
         m.addItem(withTitle: "Logic Test Vectors…", action: #selector(customLogicTest(_:)), keyEquivalent: "")
+        m.addItem(withTitle: "PAL Readout → GAL Clone…", action: #selector(palReadout(_:)), keyEquivalent: "")
         m.addItem(.separator())
         m.addItem(withTitle: "Supported PLDs…", action: #selector(showSupportedPLDs(_:)), keyEquivalent: "")
         return m
@@ -1364,6 +1365,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             guard resp == .OK, let url = panel.url, let data = try? Data(contentsOf: url) else { return }
             start(String(decoding: data, as: UTF8.self), url.lastPathComponent)
         }
+    }
+
+    @objc func palReadout(_ sender: Any?) {
+        let c = PalReadoutWindowController { [weak self] title, args, url, done in
+            guard let self = self else { return }
+            if self.isBusy { NSSound.beep(); done(false, "Another job is still running."); return }
+            self.runJob(title, args, logicic: url, then: done)
+        }
+        c.onLoadJED = { [weak self] jed, name in self?.loadJEDIntoBuffer(jed, name: name, chipType: "GAL16V8") }
+        c.onOpenSource = { [weak self] src in self?.openPLDEditor(source: src, url: nil) }
+        c.showWindow(nil)
     }
 
     @objc func customLogicTest(_ sender: Any?) {

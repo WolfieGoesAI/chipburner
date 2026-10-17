@@ -3,13 +3,16 @@ import Cocoa
 /// A window for a microcontroller's fuses, user ID and lock bits: one section each, read and
 /// written separately with minipro's --fuses, --uid and --lock.
 final class ConfigWindowController: NSWindowController {
-    struct Field {
+    final class Field {
         let name: String
         let mask: UInt16
         let defaultValue: UInt16
         let wide: Bool
         let input = NSTextField()
-        let bits = NSTextField(labelWithString: "")
+        var checks: [NSButton] = []      // index = bit number
+        init(name: String, mask: UInt16, defaultValue: UInt16, wide: Bool) {
+            self.name = name; self.mask = mask; self.defaultValue = defaultValue; self.wide = wide
+        }
     }
 
     enum Section: String, CaseIterable {
@@ -33,7 +36,7 @@ final class ConfigWindowController: NSWindowController {
         self.chip = chip
         self.baseArgs = baseArgs
         self.run = run
-        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 520),
+        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
                          styleMask: [.titled, .closable, .miniaturizable, .resizable],
                          backing: .buffered, defer: false)
         w.title = "\(chip) – Fuses, User ID & Lock Bits"
@@ -61,7 +64,7 @@ final class ConfigWindowController: NSWindowController {
     private func buildUI() {
         guard let content = window?.contentView else { return }
         var views: [NSView] = []
-        let intro = NSTextField(wrappingLabelWithString: "Values are hexadecimal. Bits marked · are not used by the chip. Each section is read and written on its own.")
+        let intro = NSTextField(wrappingLabelWithString: "Tick or untick single bits, or type the value in hex. A ticked box is a 1. Greyed-out bits aren't used by the chip. On AVRs a fuse bit of 0 means \u{201C}programmed\u{201D}. Each section is read and written on its own.")
         intro.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         intro.textColor = .secondaryLabelColor
         views.append(intro)
@@ -80,16 +83,38 @@ final class ConfigWindowController: NSWindowController {
                 f.input.widthAnchor.constraint(equalToConstant: 80).isActive = true
                 f.input.target = self
                 f.input.action = #selector(valueEdited(_:))
-                f.bits.font = NSFont.userFixedPitchFont(ofSize: 11)
-                f.bits.textColor = .secondaryLabelColor
+                let n = f.wide ? 16 : 8
+                f.checks = (0..<n).map { bit -> NSButton in
+                    let c = NSButton(checkboxWithTitle: "\(bit)", target: self, action: #selector(bitToggled(_:)))
+                    c.controlSize = .small
+                    c.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+                    c.tag = bit
+                    c.imagePosition = .imageAbove
+                    c.isEnabled = (f.mask >> bit) & 1 == 1
+                    c.toolTip = c.isEnabled ? "Bit \(bit)" : "Bit \(bit) isn't used by this chip"
+                    return c
+                }
+                var boxes: [NSView] = []
+                for bit in stride(from: n - 1, through: 0, by: -1) {
+                    boxes.append(f.checks[bit])
+                    if bit % 4 == 0 && bit > 0 {
+                        let gap = NSView()
+                        gap.widthAnchor.constraint(equalToConstant: 6).isActive = true
+                        boxes.append(gap)
+                    }
+                }
+                let bitRow = NSStackView(views: boxes)
+                bitRow.orientation = .horizontal
+                bitRow.spacing = 2
                 let def = NSTextField(labelWithString: "default " + hex(f.defaultValue, f.wide))
                 def.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
                 def.textColor = .secondaryLabelColor
-                grid.addRow(with: [name, f.input, f.bits, def])
+                grid.addRow(with: [name, f.input, bitRow, def])
                 set(f, f.defaultValue)
             }
             grid.column(at: 0).xPlacement = .trailing
-            grid.rowAlignment = .firstBaseline
+            grid.rowAlignment = .none
+            for r in 0..<grid.numberOfRows { grid.row(at: r).yPlacement = .center }
             let read = NSButton(title: "Read", target: self, action: #selector(readSection(_:)))
             let write = NSButton(title: "Write", target: self, action: #selector(writeSection(_:)))
             let defaults = NSButton(title: "Defaults", target: self, action: #selector(defaultsSection(_:)))
@@ -164,17 +189,18 @@ final class ConfigWindowController: NSWindowController {
 
     private func set(_ f: Field, _ v: UInt16) {
         f.input.stringValue = hex(v, f.wide)
-        f.bits.stringValue = bitText(v, f)
+        for c in f.checks { c.state = (v >> c.tag) & 1 == 1 ? .on : .off }
     }
 
-    private func bitText(_ v: UInt16, _ f: Field) -> String {
-        let n = f.wide ? 16 : 8
-        var s = ""
-        for b in stride(from: n - 1, through: 0, by: -1) {
-            if (f.mask >> b) & 1 == 0 { s += "·" } else { s += (v >> b) & 1 == 1 ? "1" : "0" }
-            if b % 4 == 0 && b > 0 { s += " " }
-        }
-        return s
+    @objc private func bitToggled(_ sender: NSButton) {
+        for list in fields.values { for f in list where f.checks.contains(where: { $0 === sender }) {
+            var v = value(f) ?? f.defaultValue
+            let bit = UInt16(1) << UInt16(sender.tag)
+            if sender.state == .on { v |= bit } else { v &= ~bit }
+            set(f, v)
+            status.stringValue = "\(f.name) = \(hex(v, f.wide)) (not written yet)"
+            status.textColor = .labelColor
+        } }
     }
 
     private func value(_ f: Field) -> UInt16? {
@@ -186,7 +212,7 @@ final class ConfigWindowController: NSWindowController {
 
     @objc private func valueEdited(_ sender: NSTextField) {
         for list in fields.values { for f in list where f.input === sender {
-            if let v = value(f) { set(f, v) } else { NSSound.beep(); f.bits.stringValue = "not a hex value" }
+            if let v = value(f) { set(f, v) } else { NSSound.beep(); status.stringValue = "\(f.name): not a hex value"; status.textColor = .systemRed }
         } }
     }
 
