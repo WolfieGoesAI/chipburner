@@ -311,8 +311,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         stack.setCustomSpacing(12, after: settingsBlock)
         stack.setCustomSpacing(10, after: dividerBottom)
         // The buffer line sits midway between the hex editor and the edit buttons.
-        stack.setCustomSpacing(7, after: bufferView)
-        stack.setCustomSpacing(5, after: fileRow)
+        stack.setCustomSpacing(6, after: bufferView)
+        stack.setCustomSpacing(6, after: fileRow)
         stack.setCustomSpacing(10, after: editRow)
         stack.setCustomSpacing(8, after: dividerStatus)
         stack.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 12, right: 16)
