@@ -228,7 +228,8 @@ final class ConfigWindowController: NSWindowController {
     private func apply(_ values: [String: UInt16], to sections: [Section]) -> Int {
         var n = 0
         for s in sections { for f in fields[s] ?? [] {
-            if let v = values[f.name.lowercased()] { set(f, v); n += 1 }
+            // minipro reports byte-wide fuses with the unused high byte set ("0xfff9").
+            if let v = values[f.name.lowercased()] { set(f, f.wide ? v : v & 0xFF); n += 1 }
         } }
         return n
     }
@@ -314,6 +315,8 @@ final class ConfigWindowController: NSWindowController {
         a.addButton(withTitle: "Cancel")
         a.beginSheetModal(for: w) { [weak self] resp in
             guard let self = self, resp == .alertFirstButtonReturn else { return }
+            var wanted: [String: UInt16] = [:]
+            for f in self.fields[s] ?? [] { if let v = self.value(f) { wanted[f.name] = v } }
             let url = self.tempURL("config-write.conf")
             do { try (lines.joined(separator: "\n") + "\n").write(to: url, atomically: true, encoding: .ascii) } catch {
                 self.status.stringValue = "Could not write a temporary file."
@@ -322,12 +325,53 @@ final class ConfigWindowController: NSWindowController {
             self.run("Write \(s.rawValue.lowercased()) of \(self.chip)", self.baseArgs + ["-c", "config", "-w", url.path, s.flag]) { [weak self] ok, output in
                 guard let self = self else { return }
                 let verifyError = output.lowercased().contains("verify error")
-                self.status.stringValue = ok && !verifyError ? "\(s.rawValue) written and read back." :
-                    verifyError ? "\(s.rawValue) written, but reading back gave different values – see the Log." :
-                    "Writing \(s.rawValue.lowercased()) failed – see the Log."
-                self.status.textColor = ok && !verifyError ? .labelColor : .systemRed
+                if ok && verifyError {
+                    self.explainVerifyError(s, wanted: wanted)
+                    return
+                }
+                self.status.stringValue = ok ? "\(s.rawValue) written and read back." : "Writing \(s.rawValue.lowercased()) failed – see the Log."
+                self.status.textColor = ok ? .labelColor : .systemRed
             }
         }
+    }
+
+    /// After "verify error": read the section back and say which bits didn't take.
+    private func explainVerifyError(_ s: Section, wanted: [String: UInt16]) {
+        read([s], filter: [s.flag]) { [weak self] in
+            guard let self = self, let w = self.window else { return }
+            var lines: [String] = []
+            var onlySPIEN = self.isAVR
+            for f in self.fields[s] ?? [] {
+                guard let want = wanted[f.name], let got = self.value(f) else { continue }
+                let diff = (want ^ got) & f.mask
+                guard diff != 0 else { continue }
+                let bits = (0..<16).filter { diff & (1 << $0) != 0 }
+                lines.append("\(f.name): wrote \(self.hex(want, f.wide)), reads \(self.hex(got, f.wide)) – bit \(bits.map(String.init).joined(separator: ", ")) didn't change.")
+                if !(f.name.lowercased() == "hfuse" && bits == [5]) { onlySPIEN = false }
+            }
+            guard !lines.isEmpty else {
+                self.status.stringValue = "\(s.rawValue) written; minipro reported a verify error, but the values read back match."
+                self.status.textColor = .labelColor
+                return
+            }
+            self.status.stringValue = "\(s.rawValue): some bits didn't change – see the message."
+            self.status.textColor = .systemRed
+            let a = NSAlert()
+            a.messageText = "Not every bit could be written"
+            var info = lines.joined(separator: "\n")
+            if onlySPIEN {
+                info += "\n\nBit 5 of hfuse is SPIEN (serial programming enable). The TL866 programs AVRs through their serial programming interface, and through that interface SPIEN can't be changed – the chip refuses. So this verify difference is expected and harmless. All other bits were written. Since the programmer can talk to the chip at all, serial programming is in fact enabled."
+            } else {
+                info += "\n\nThe chip didn't accept these bits. Check that the right chip type is selected, then try Erase and write again."
+            }
+            a.informativeText = info
+            a.beginSheetModal(for: w, completionHandler: nil)
+        }
+    }
+
+    private var isAVR: Bool {
+        let c = chip.uppercased()
+        return c.hasPrefix("ATMEGA") || c.hasPrefix("ATTINY") || c.hasPrefix("AT90")
     }
 
     @objc private func openFile(_ sender: Any?) {
