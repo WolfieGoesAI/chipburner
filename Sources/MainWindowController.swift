@@ -25,6 +25,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     private let chipInfoLabel = NSTextField(labelWithString: "")
     private let bufferLabel = NSTextField(labelWithString: "Buffer: empty")
     private var programmerModel: String?
+    private var compareWindow: CompareWindowController?
     /// "TL866A – Serial … – Firmware …", shown in the Hardware… dialog (the main window shows the model only).
     private var programmerDetails: String?
     private let statusLabel = NSTextField(labelWithString: "Ready")
@@ -559,6 +560,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
 
     /// Shows a newly loaded or read buffer in the editor (and starts a fresh undo history).
     private func updateBufferViews() {
+        defer {
+            if let c = compareWindow {
+                if bufferIsText { c.close() } else { c.refresh() }
+            }
+        }
         bufferEdited = false
         if bufferIsText {
             textEditor.string = String(decoding: buffer, as: UTF8.self)
@@ -827,7 +833,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             if ok {
                 var extra = ""
                 if let info = self.chipDetails { extra = "\n\n" + info.summary }
-                self.showInfo(name, text + extra)
+                guard let w = self.window, self.currentPinout != nil else { self.showInfo(name, text + extra); return }
+                let a = NSAlert()
+                a.alertStyle = .informational
+                a.messageText = name
+                a.informativeText = text + extra
+                a.addButton(withTitle: "OK")
+                a.addButton(withTitle: "Pinout…")
+                a.beginSheetModal(for: w) { [weak self] r in
+                    if r == .alertSecondButtonReturn { DispatchQueue.main.async { self?.showPinout(nil) } }
+                }
             } else {
                 self.showError("No details for \(name)", text.isEmpty ? "minipro gave no answer." : text)
             }
@@ -1665,6 +1680,40 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         }
     }
 
+    /// Build screenshots of the tool windows (disassembly, pinout, compare).
+    func saveToolScreenshots(base: String) {
+        func snap(_ w: NSWindow?, _ suffix: String) {
+            guard let content = w?.contentView else { return }
+            content.layoutSubtreeIfNeeded()
+            if let rep = content.bitmapImageRepForCachingDisplay(in: content.bounds) {
+                content.cacheDisplay(in: content.bounds, to: rep)
+                try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: base + suffix))
+                print("SMOKE screenshot saved: \(base + suffix)")
+            }
+        }
+        let z80: [UInt8] = [0xF3, 0x31, 0x00, 0x80, 0xED, 0x56, 0x3E, 0x00, 0xD3, 0x10, 0x21, 0x00, 0x40, 0x11, 0x01, 0x40,
+                            0x01, 0xFF, 0x0F, 0x36, 0x00, 0xED, 0xB0, 0xCD, 0x20, 0x00, 0xFB, 0x18, 0xFE, 0xFF, 0xFF, 0xFF,
+                            0xF5, 0xC5, 0xDD, 0x7E, 0x05, 0xFE, 0x0A, 0x30, 0x04, 0xC6, 0x30, 0x18, 0x02, 0xC6, 0x37, 0xD3,
+                            0x11, 0xC1, 0xF1, 0xC9]
+        UserDefaults.standard.set(DisasmCPU.z80.rawValue, forKey: "disasmCPU")
+        let d = DisassemblyWindowController(bytes: Data(z80), name: "example.bin", startOffset: nil)
+        d.window?.setContentSize(NSSize(width: 640, height: 460))
+        d.showWindow(nil)
+        snap(d.window, "-disasm.png")
+        d.close()
+        if let p = Pinouts.find(chip: "AM27C256@DIP28", size: 32768) {
+            let pw = PinoutWindowController(chip: "AM27C256@DIP28", pinout: p)
+            pw.showWindow(nil)
+            snap(pw.window, "-pinout.png")
+            pw.close()
+        }
+        var other = buffer
+        if other.count > 0x120 { for i in [0x10, 0x11, 0x12, 0x105, 0x110] { other[i] ^= 0x5A } }
+        openCompare(name: "patched.bin", data: other)
+        snap(compareWindow?.window, "-compare.png")
+        compareWindow?.close()
+    }
+
     /// Renders the window's content to a PNG file.
     func saveScreenshot(to path: String) {
         guard let content = window?.contentView else { return }
@@ -1712,6 +1761,81 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     // MARK: Hardware
 
     /// Hardware… : check which programmer is connected, or run its self-test.
+    // MARK: Compare, disassemble, pinout
+
+    private var currentPinout: ChipPinout? {
+        guard !chip.isEmpty else { return nil }
+        let info = chipDetails
+        return Pinouts.find(chip: chip, size: info?.codeSize, isSRAM: info?.kind == .sram)
+    }
+
+    @objc func showPinout(_ sender: Any?) {
+        guard requireChip() else { return }
+        guard let p = currentPinout else {
+            showInfo("No pinout for \(chip)", "ChipBurner has pinouts for standard (JEDEC) EPROMs, EEPROMs, flash and SRAM in DIP packages, GALs, 8-pin serial memories and the common AVR, PIC and 8051 chips. For this one, please check its data sheet.")
+            return
+        }
+        PinoutWindowController(chip: chip, pinout: p).showWindow(nil)
+    }
+
+    private func requireBinaryBuffer() -> Bool {
+        if buffer.isEmpty { showError("The buffer is empty.", "Open a file or read a chip first."); return false }
+        if bufferIsText { showError("The buffer holds a text file.", "Compare and Disassemble work on binary data – open a .bin, .hex or .s19 file, or read a chip."); return false }
+        return true
+    }
+
+    private func openCompare(name: String, data: Data) {
+        compareWindow?.close()
+        let hooks = CompareWindowController.Hooks(
+            buffer: { [weak self] in self?.hexEditor.data ?? Data() },
+            select: { [weak self] r in self?.hexEditor.select(r) },
+            mark: { [weak self] s in self?.hexEditor.marked = s },
+            replace: { [weak self] r, d in self?.hexEditor.edit { $0.replace(r, with: d) } })
+        let c = CompareWindowController(otherName: name, other: data, hooks: hooks)
+        c.onClose = { [weak self] in self?.compareWindow = nil }
+        compareWindow = c
+        c.showWindow(nil)
+        log("Comparing the buffer with \(name).")
+    }
+
+    @objc func compareWithFile(_ sender: Any?) {
+        guard requireBinaryBuffer(), let w = window else { return }
+        let panel = NSOpenPanel()
+        panel.message = "Choose a file to compare the buffer with (.bin, Intel HEX or S-record)."
+        panel.beginSheetModal(for: w) { [weak self] r in
+            guard let self = self, r == .OK, let url = panel.url, let raw = try? Data(contentsOf: url) else { return }
+            do {
+                let data = try FileFormat.detect(url, raw).decode(raw)
+                self.openCompare(name: url.lastPathComponent, data: data)
+            } catch {
+                self.showError("Couldn't read \(url.lastPathComponent)", "\(error)")
+            }
+        }
+    }
+
+    @objc func compareWithChip(_ sender: Any?) {
+        guard requireBinaryBuffer(), requireChip(), connectionAllowed() else { return }
+        let m = mode
+        guard !m.text else { showError("Choose a binary memory area.", "Compare works on code or data memory, not on fuse settings."); return }
+        let out = tempURL("compare.\(m.ext)")
+        try? FileManager.default.removeItem(at: out)
+        runJob("Read \(chip) to compare", ["-p", chip] + connectionArgs + m.memArgs + ["-r", out.path] + optionArgs(.read)) { [weak self] ok, _ in
+            guard let self = self, ok, let data = try? Data(contentsOf: out) else { return }
+            self.openCompare(name: self.chip, data: data)
+        }
+    }
+
+    @objc func disassemble(_ sender: Any?) {
+        guard requireBinaryBuffer() else { return }
+        let c = DisassemblyWindowController(bytes: buffer, name: bufferName.isEmpty ? "buffer" : bufferName, startOffset: hexEditor.selection?.lowerBound)
+        c.onSelectInBuffer = { [weak self] r in
+            guard let self = self else { return }
+            self.hexEditor.select(r.clamped(to: 0..<self.buffer.count))
+            self.window?.makeKeyAndOrderFront(nil)
+        }
+        c.showWindow(nil)
+    }
+
     /// Zoom / maximise: keep the width and position, use the screen's full usable height.
     func windowWillUseStandardFrame(_ window: NSWindow, defaultFrame newFrame: NSRect) -> NSRect {
         guard window === self.window else { return newFrame }
@@ -2002,7 +2126,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         selectionLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         hexEditor.onSelectionChange = { [weak self] in self?.updateSelectionLabel() }
         updateSelectionLabel()
-        return row(buttons + [spacer(), selectionLabel])
+        // Tools: compare, disassemble, pinout.
+        let tools = NSPopUpButton(frame: .zero, pullsDown: true)
+        tools.controlSize = .small
+        tools.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        tools.addItem(withTitle: "Tools")
+        for (t, sel) in [("Compare with File…", #selector(compareWithFile(_:))), ("Compare with Chip", #selector(compareWithChip(_:))),
+                         ("Disassemble…", #selector(disassemble(_:))), ("Pinout…", #selector(showPinout(_:)))] {
+            let item = NSMenuItem(title: t, action: sel, keyEquivalent: "")
+            item.target = self
+            tools.menu?.addItem(item)
+        }
+        tools.toolTip = "Compare the buffer with a file or chip, show it as CPU code, or show the chip's pinout."
+        return row(buttons + [tools, spacer(), selectionLabel])
     }
 
     /// Called after every edit: marks the buffer edited and refreshes the label (checksums are
@@ -2014,6 +2150,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
             self?.labelUpdatePending = false
             self?.updateBufferLabel()
+            self?.compareWindow?.refresh()
         }
     }
 

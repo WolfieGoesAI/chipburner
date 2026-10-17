@@ -217,5 +217,49 @@ expect(PairTools.interleave(even: Data([1, 2]), odd: Data([9])) == Data([1, 9, 2
 let plds = db.names(of: .pld, programmer: "TL866A")
 print("  PLDs for TL866A (\(plds.count)): \(plds.joined(separator: " "))")
 
+// Buffer compare
+do {
+    let a = Data([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+    var b = a; b[2] = 0xFF; b[3] = 0xFE; b[7] = 0x11
+    let d = BufferDiff.compare(a, b)
+    expect(d.runs == [BufferDiff.Run(start: 2, count: 2), BufferDiff.Run(start: 7, count: 1)] && d.differingBytes == 3, "compare finds two runs")
+    let g = BufferDiff.compare(a, b, mergeGap: 4)
+    expect(g.runs == [BufferDiff.Run(start: 2, count: 6)] && g.differingBytes == 3, "compare merges nearby runs")
+    let t = BufferDiff.compare(a, a + Data([1, 2]))
+    expect(t.runs.isEmpty && !t.identical && t.sizeB == 12, "compare reports a size difference")
+    expect(BufferDiff.compare(a, a).identical, "identical images")
+    expect(BufferDiff.compare(Data([1]), Data([2])).indexSet == IndexSet([0]), "diff index set")
+}
+
+// Pinouts
+do {
+    let p256 = Pinouts.find(chip: "AM27C256@DIP28", size: 32768)
+    expect(p256?.title.hasPrefix("27256") == true && p256?.pins.count == 28 && p256?.pins[0] == "VPP" && p256?.pins[26] == "A14" && p256?.pins[13] == "GND", "pinout 27C256")
+    let p512 = Pinouts.find(chip: "W27C512@DIP28", size: 65536)
+    expect(p512?.pins[0] == "A15" && p512?.pins[21] == "/OE/VPP", "pinout 27C512")
+    let p64 = Pinouts.find(chip: "2764@DIP28", size: 8192)
+    expect(p64?.pins[25] == "NC" && p64?.pins[26] == "/PGM", "pinout 2764")
+    let p801 = Pinouts.find(chip: "M27C801@DIP32", size: 1048576)
+    expect(p801?.pins[0] == "A19" && p801?.pins[29] == "A17" && p801?.pins[30] == "A18" && p801?.pins.count == 32, "pinout 27C801")
+    let e256 = Pinouts.find(chip: "AT28C256@DIP28", size: 32768)
+    expect(e256?.title.hasPrefix("28C256") == true && e256?.pins[26] == "/WE" && e256?.pins[0] == "A14", "pinout 28C256")
+    let f040 = Pinouts.find(chip: "SST39SF040@DIP32", size: 524288)
+    expect(f040?.pins[0] == "A18" && f040?.pins[30] == "/WE" && f040?.pins[29] == "A17", "pinout 39SF040")
+    let s62 = Pinouts.find(chip: "62256", size: 32768, isSRAM: true)
+    expect(s62?.title.hasPrefix("62256") == true && s62?.pins[26] == "/WE" && s62?.pins[19] == "/CS", "pinout 62256")
+    expect(Pinouts.find(chip: "ATMEGA328P@DIP28", size: 32768)?.pins[0] == "PC6/RESET", "pinout ATmega328P")
+    expect(Pinouts.find(chip: "AT24C02@SOIC8", size: 256)?.pins[4] == "SDA", "pinout 24C02 (SO8)")
+    expect(Pinouts.find(chip: "W25Q32@SOIC8", size: 4194304)?.pins[5] == "CLK", "pinout W25Q32")
+    expect(Pinouts.find(chip: "GAL16V8@DIP20", size: nil)?.pins[10] == "/OE/I11", "pinout GAL16V8")
+    expect(Pinouts.find(chip: "AT89C51@DIP40", size: 4096)?.pins[30] == "/EA/VPP", "pinout 8051")
+    expect(Pinouts.find(chip: "AM27C256@PLCC32", size: 32768) == nil, "no pinout for PLCC")
+    // every generated layout has exactly one VCC and at least one ground
+    for c in [("2716", 2048), ("2732", 4096), ("27128", 16384), ("27C010", 131072), ("27C020", 262144), ("27C040", 524288), ("28C16", 2048), ("28C64", 8192), ("6116", 2048), ("6264", 8192), ("628128", 131072), ("628512", 524288), ("29F010", 131072), ("29F020", 262144)] {
+        let p = Pinouts.find(chip: c.0, size: c.1, isSRAM: c.0.hasPrefix("6"))
+        let ok = p != nil && p!.pins.filter { $0 == "VCC" }.count == 1 && p!.pins.contains("GND") && p!.pins.count % 2 == 0
+        expect(ok, "pinout \(c.0): \(p?.title ?? "none")")
+    }
+}
+
 print(failed ? "DBTEST FAILED" : "DBTEST OK")
 exit(failed ? 1 : 0)

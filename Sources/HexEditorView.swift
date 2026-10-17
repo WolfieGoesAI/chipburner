@@ -13,6 +13,8 @@ final class HexEditorView: NSView {
 
     /// Bytes tinted as a search hit / go-to target.
     private(set) var highlight: Range<Int>?
+    /// Bytes marked as different from a compared file or chip (tinted orange).
+    var marked = IndexSet() { didSet { grid.needsDisplay = true } }
     /// Where Find Next continues from.
     var cursor: Int {
         get { grid.cursor }
@@ -210,6 +212,7 @@ fileprivate final class HexGridView: NSView {
         let focused = window?.firstResponder === self
         let selColor = focused ? NSColor.selectedTextBackgroundColor : NSColor.unemphasizedSelectedTextBackgroundColor
         let hiColor = NSColor.findHighlightColor.withAlphaComponent(0.6)
+        let diffColor = NSColor.systemOrange.withAlphaComponent(0.35)
         let alt = NSColor.controlAlternatingRowBackgroundColors.count > 1 ? NSColor.controlAlternatingRowBackgroundColors[1] : NSColor.textBackgroundColor
         for row in first...last {
             let y = CGFloat(row) * rowH
@@ -226,6 +229,8 @@ fileprivate final class HexGridView: NSView {
                     selColor.setFill(); hexRect.fill(); ascRect.fill()
                 } else if let h = owner.highlight, h.contains(idx) {
                     hiColor.setFill(); hexRect.fill(); ascRect.fill()
+                } else if owner.marked.contains(idx) {
+                    diffColor.setFill(); hexRect.fill(); ascRect.fill()
                 }
                 if idx == cursor {
                     let active = asciiPane ? ascRect : hexRect

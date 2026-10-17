@@ -142,3 +142,57 @@ enum BufferOps {
         count > 0x1000000 ? 8 : count > 0x10000 ? 6 : 4
     }
 }
+
+/// Byte-by-byte comparison of two images.
+enum BufferDiff {
+    struct Run: Equatable {
+        let start: Int
+        let count: Int
+        var range: Range<Int> { start..<(start + count) }
+    }
+
+    struct Result {
+        var runs: [Run] = []
+        var differingBytes = 0
+        var sizeA = 0
+        var sizeB = 0
+        var identical: Bool { runs.isEmpty && sizeA == sizeB }
+        /// The bytes that differ, for highlighting.
+        var indexSet: IndexSet {
+            var s = IndexSet()
+            for r in runs { s.insert(integersIn: r.range) }
+            return s
+        }
+    }
+
+    /// Differences over the common length; a size difference is reported separately.
+    /// Runs closer than `mergeGap` bytes apart are joined so a patch shows up as one place.
+    static func compare(_ a: Data, _ b: Data, mergeGap: Int = 0) -> Result {
+        var r = Result()
+        r.sizeA = a.count; r.sizeB = b.count
+        let n = min(a.count, b.count)
+        guard n > 0 else { return r }
+        let x = [UInt8](a.prefix(n)), y = [UInt8](b.prefix(n))
+        var i = 0
+        while i < n {
+            if x[i] != y[i] {
+                let s = i
+                var lastDiff = i
+                i += 1
+                while i < n {
+                    if x[i] != y[i] { lastDiff = i }
+                    else if i - lastDiff > mergeGap { break }
+                    i += 1
+                }
+                var count = 0
+                for k in s...lastDiff where x[k] != y[k] { count += 1 }
+                r.differingBytes += count
+                r.runs.append(Run(start: s, count: lastDiff - s + 1))
+                i = lastDiff + 1
+            } else {
+                i += 1
+            }
+        }
+        return r
+    }
+}

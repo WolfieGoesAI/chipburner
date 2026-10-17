@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if let path = shot {
                     controller.saveScreenshot(to: path)
                     controller.saveFuseScreenshot(to: (path as NSString).deletingPathExtension + "-fuses.png")
+                    controller.saveToolScreenshots(base: (path as NSString).deletingPathExtension)
                 }
                 let ok = controller.smokeReport()
                 fflush(stdout)
@@ -131,6 +132,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         chipMenu.addItem(withTitle: "Chip Ident…", action: #selector(MainWindowController.identifyChip(_:)), keyEquivalent: "i")
         chipMenu.addItem(withTitle: "Fuses, User ID & Lock Bits…", action: #selector(MainWindowController.openConfigWindow(_:)), keyEquivalent: "u")
         chipMenu.addItem(withTitle: "Chip Test (SRAM / EPROM health)…", action: #selector(MainWindowController.openChipTest(_:)), keyEquivalent: "")
+        chipMenu.addItem(withTitle: "Pinout…", action: #selector(MainWindowController.showPinout(_:)), keyEquivalent: "")
         chipMenu.addItem(.separator())
         chipMenu.addItem(withTitle: "Read", action: #selector(MainWindowController.readChip(_:)), keyEquivalent: "r")
         chipMenu.addItem(withTitle: "Blank Check", action: #selector(MainWindowController.blankCheck(_:)), keyEquivalent: "b")
@@ -160,6 +162,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         bufMenu.addItem(withTitle: "Fill Range…", action: #selector(MainWindowController.fillBufferRange(_:)), keyEquivalent: "")
         bufMenu.addItem(withTitle: "Checksum of Range…", action: #selector(MainWindowController.checksumBufferRange(_:)), keyEquivalent: "")
         bufMenu.addItem(withTitle: "Resize Buffer…", action: #selector(MainWindowController.resizeBuffer(_:)), keyEquivalent: "")
+        bufMenu.addItem(.separator())
+        bufMenu.addItem(withTitle: "Compare with File…", action: #selector(MainWindowController.compareWithFile(_:)), keyEquivalent: "")
+        bufMenu.addItem(withTitle: "Compare with Chip", action: #selector(MainWindowController.compareWithChip(_:)), keyEquivalent: "")
+        let dis = bufMenu.addItem(withTitle: "Disassemble…", action: #selector(MainWindowController.disassemble(_:)), keyEquivalent: "d")
+        dis.keyEquivalentModifierMask = [.command, .option]
         bufItem.submenu = bufMenu
 
         let winItem = NSMenuItem(); main.addItem(winItem)
