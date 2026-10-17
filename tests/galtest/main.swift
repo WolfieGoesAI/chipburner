@@ -235,7 +235,26 @@ for pld in files.filter({ $0.hasSuffix(".pld") }).sorted() {
             checks += 1
         }
     }
-    if !registered && checks == 0 { problems.append("no output was checked") }
+    // Registers whose next value depends only on input pins: after the clock pulse in a vector,
+    // the output must equal the source equation applied to that vector's inputs.
+    if registered && p.chip != "GAL20RA10" && p.ar == nil && p.sp == nil {
+        let outPins = Set(p.eqs.keys)
+        for v in g.test.vectors {
+            for (pin, e) in p.eqs where e.kind == .registered {
+                guard let t = e.term, !t.rows.joined().contains(where: { outPins.contains($0.pin) }) else { continue }
+                var known = true
+                func pv(_ q: Int) -> Bool { switch v[q - 1] { case "1": return true; case "0": return false; default: known = false; return false } }
+                let tv = t.isTrue || t.rows.contains { row in row.allSatisfy { l in pv(l.pin) != l.negated } }
+                guard known else { continue }
+                let want: Character = (e.activeHigh ? tv : !tv) ? "H" : "L"
+                if v[pin - 1] != want { problems.append("registered pin \(pin): vector has \(v[pin - 1]), the source gives \(want)"); break }
+                checks += 1
+            }
+        }
+    }
+    if checks == 0 && !(registered && (p.chip == "GAL20RA10" || p.ar != nil || p.sp != nil || p.eqs.values.allSatisfy { $0.kind != .registered || ($0.term?.rows.joined().contains { Set(p.eqs.keys).contains($0.pin) } ?? true) })) {
+        problems.append("no output was checked")
+    }
     if problems.isEmpty { vecPassed += 1; print("ok   GAL test vectors \(base): \(g.test.vectors.count) vectors, \(checks) output checks against the source") }
     else { vecFailed += 1; print("FAIL GAL test vectors \(base): " + problems.prefix(4).joined(separator: "; ")) }
 }
