@@ -276,8 +276,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             b.boxType = .separator
             return b
         }
-        let dividerTop = divider(), dividerBottom = divider()
-        let rows: [NSView] = [progRow, chipRow, chipInfoLabel, dividerTop, actionRow, settingsBlock, dividerBottom, fileRow, editRow, bufferView, statusRow]
+        let dividerTop = divider(), dividerBottom = divider(), dividerStatus = divider()
+        // The edit buttons sit under the buffer, with a divider between them and the status line.
+        let rows: [NSView] = [progRow, chipRow, chipInfoLabel, dividerTop, actionRow, settingsBlock, dividerBottom, fileRow, bufferView, editRow, dividerStatus, statusRow]
         let stack = NSStackView(views: rows)
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -289,7 +290,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         stack.setCustomSpacing(12, after: settingsBlock)
         stack.setCustomSpacing(10, after: dividerBottom)
         stack.setCustomSpacing(6, after: fileRow)
-        stack.setCustomSpacing(6, after: editRow)
+        stack.setCustomSpacing(6, after: bufferView)
+        stack.setCustomSpacing(10, after: editRow)
+        stack.setCustomSpacing(8, after: dividerStatus)
         stack.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 12, right: 16)
         stack.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(stack)
