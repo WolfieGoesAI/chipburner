@@ -261,5 +261,44 @@ do {
     }
 }
 
+// Logic chip pinouts: the named pins must match the roles in minipro's test vectors.
+if let xml = try? String(contentsOfFile: args[2]) {
+    var checked = 0, generated = 0, problems: [String] = []
+    for (chip, entry) in Pinouts.logicNames {
+        guard let v = Pinouts.logicVectors(xml: xml, name: chip) else { problems.append("\(chip): not in logicic.xml"); continue }
+        let items = entry.pins.split(separator: " ")
+        guard items.count == v.pins else { problems.append("\(chip): \(items.count) names for \(v.pins) pins"); continue }
+        let roles = Pinouts.logicRoles(v.vectors, pins: v.pins)
+        for (i, item) in items.enumerated() {
+            let mine = item.first!, db = roles[i]
+            let name = item.split(separator: ":").last!
+            let ok = mine == db || db == "n" || (mine == "i" && db == "c") || (mine == "n" && db == "i") || (mine == "b" && db != "g" && db != "v")
+                || (name == "VEE") || (Pinouts.logicVectorQuirks[chip]?.contains(i + 1) ?? false)
+            if !ok { problems.append("\(chip) pin \(i + 1) \(name): names say \(mine), vectors say \(db)") }
+        }
+        checked += 1
+    }
+    // Every chip in the logic database gets some pinout.
+    var names: [String] = []
+    var from = xml.startIndex
+    while let r = xml.range(of: "<ic name=\"", range: from..<xml.endIndex), let e = xml.range(of: "\"", range: r.upperBound..<xml.endIndex) {
+        names += xml[r.upperBound..<e.lowerBound].split(separator: ",").map { String($0) }
+        from = e.upperBound
+    }
+    var missing: [String] = []
+    for n in names {
+        if let v = Pinouts.logicVectors(xml: xml, name: n), let p = Pinouts.logic(name: n, pins: v.pins, group: v.group, vectors: v.vectors), p.pins.count == v.pins { generated += 1 }
+        else { missing.append(n) }
+    }
+    expect(problems.isEmpty, "logic pinout names match the test vectors (\(checked) chips)" + (problems.isEmpty ? "" : ": " + problems.prefix(12).joined(separator: "; ")))
+    expect(generated > 250, "logic pinouts for \(generated) of \(names.count) names" + (missing.isEmpty ? "" : " – none for " + missing.prefix(10).joined(separator: ", ")))
+    let p00 = Pinouts.find(chip: "", size: nil)  // keeps the non-logic lookup honest for empty names
+    expect(p00 == nil, "no pinout for an empty name")
+    if let v = Pinouts.logicVectors(xml: xml, name: "74132"), let p = Pinouts.logic(name: "74132", pins: v.pins, group: v.group, vectors: v.vectors) {
+        expect(p.pins[2] == "1Y" && p.title.contains("same pinout as 7400"), "74132 uses the 7400 names")
+    }
+    expect(Pinouts.logicBase("SN74LS00N") == "7400" && Pinouts.logicBase("74HCT245") == "74245" && Pinouts.logicBase("CD4011BE") == "4011", "logic part numbers")
+}
+
 print(failed ? "DBTEST FAILED" : "DBTEST OK")
 exit(failed ? 1 : 0)

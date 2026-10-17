@@ -7,6 +7,8 @@ struct ChipPinout: Equatable {
     let title: String
     let pins: [String]          // pins[0] is pin 1
     var notes: [String] = []
+    /// Per pin, for logic chips: i input, o output, b bidirectional, c clock, g ground, v supply, n unused.
+    var roles: [Character] = []
 }
 
 enum Pinouts {
@@ -20,7 +22,7 @@ enum Pinouts {
     static func find(chip: String, size: Int?, isSRAM: Bool = false) -> ChipPinout? {
         let upper = chip.uppercased()
         let parts = upper.split(separator: "@", maxSplits: 1).map(String.init)
-        let name = parts[0]
+        guard let name = parts.first, !name.isEmpty else { return nil }
         let pkg = parts.count > 1 ? parts[1] : ""
         let pkgPins = Int(pkg.filter { $0.isNumber })
         let isDIP = pkg.isEmpty || pkg.hasPrefix("DIP") || pkg.hasPrefix("PDIP") || pkg.hasPrefix("CDIP")
@@ -228,4 +230,162 @@ enum Pinouts {
         "RB4/PGM", "RB5", "RB6/PGC", "RB7/PGD", "VDD", "RA6/OSC2", "RA7/OSC1", "RA0", "RA1"],
                                       notes: ["On the PIC16F84 pins 15/16 are OSC2/OSC1 only, and RX/TX/CCP1 don't exist."])
     static let pic12f675 = ChipPinout(title: "PIC12F629 / 675 / 683 (DIP8)", pins: ["VDD", "GP5/OSC1", "GP4/OSC2", "GP3/MCLR/VPP", "GP2", "GP1/ICSPCLK", "GP0/ICSPDAT", "VSS"])
+
+    // MARK: Logic chips
+
+    /// Signal names for common logic chips, written from the makers' data sheets ("role:name" per pin,
+    /// pin 1 first). The build checks every role against the database's test vectors.
+    static let logicNames: [String: (title: String, pins: String)] = [
+        "7400": ("quad 2-input NAND", "i:1A i:1B o:1Y i:2A i:2B o:2Y g:GND o:3Y i:3A i:3B o:4Y i:4A i:4B v:VCC"),
+        "7402": ("quad 2-input NOR", "o:1Y i:1A i:1B o:2Y i:2A i:2B g:GND i:3A i:3B o:3Y i:4A i:4B o:4Y v:VCC"),
+        "7404": ("hex inverter", "i:1A o:1Y i:2A o:2Y i:3A o:3Y g:GND o:4Y i:4A o:5Y i:5A o:6Y i:6A v:VCC"),
+        "7408": ("quad 2-input AND", "i:1A i:1B o:1Y i:2A i:2B o:2Y g:GND o:3Y i:3A i:3B o:4Y i:4A i:4B v:VCC"),
+        "7410": ("triple 3-input NAND", "i:1A i:1B i:2A i:2B i:2C o:2Y g:GND o:3Y i:3A i:3B i:3C o:1Y i:1C v:VCC"),
+        "7411": ("triple 3-input AND", "i:1A i:1B i:2A i:2B i:2C o:2Y g:GND o:3Y i:3A i:3B i:3C o:1Y i:1C v:VCC"),
+        "7420": ("dual 4-input NAND", "i:1A i:1B n:NC i:1C i:1D o:1Y g:GND o:2Y i:2A i:2B n:NC i:2C i:2D v:VCC"),
+        "7421": ("dual 4-input AND", "i:1A i:1B n:NC i:1C i:1D o:1Y g:GND o:2Y i:2A i:2B n:NC i:2C i:2D v:VCC"),
+        "7427": ("triple 3-input NOR", "i:1A i:1B i:2A i:2B i:2C o:2Y g:GND o:3Y i:3A i:3B i:3C o:1Y i:1C v:VCC"),
+        "7430": ("8-input NAND", "i:A i:B i:C i:D i:E i:F g:GND o:Y n:NC n:NC i:G i:H n:NC v:VCC"),
+        "7432": ("quad 2-input OR", "i:1A i:1B o:1Y i:2A i:2B o:2Y g:GND o:3Y i:3A i:3B o:4Y i:4A i:4B v:VCC"),
+        "7474": ("dual D flip-flop", "i:1/CLR i:1D i:1CLK i:1/PRE o:1Q o:1/Q g:GND o:2/Q o:2Q i:2/PRE i:2CLK i:2D i:2/CLR v:VCC"),
+        "7486": ("quad 2-input XOR", "i:1A i:1B o:1Y i:2A i:2B o:2Y g:GND o:3Y i:3A i:3B o:4Y i:4A i:4B v:VCC"),
+        "74125": ("quad 3-state buffer", "i:1/OE i:1A o:1Y i:2/OE i:2A o:2Y g:GND o:3Y i:3A i:3/OE o:4Y i:4A i:4/OE v:VCC"),
+        "74126": ("quad 3-state buffer", "i:1OE i:1A o:1Y i:2OE i:2A o:2Y g:GND o:3Y i:3A i:3OE o:4Y i:4A i:4OE v:VCC"),
+        "74138": ("3-to-8 decoder", "i:A i:B i:C i:/G2A i:/G2B i:G1 o:/Y7 g:GND o:/Y6 o:/Y5 o:/Y4 o:/Y3 o:/Y2 o:/Y1 o:/Y0 v:VCC"),
+        "74139": ("dual 2-to-4 decoder", "i:1/G i:1A i:1B o:1/Y0 o:1/Y1 o:1/Y2 o:1/Y3 g:GND o:2/Y3 o:2/Y2 o:2/Y1 o:2/Y0 i:2B i:2A i:2/G v:VCC"),
+        "74151": ("8-to-1 multiplexer", "i:D3 i:D2 i:D1 i:D0 o:Y o:/W i:/G g:GND i:C i:B i:A i:D7 i:D6 i:D5 i:D4 v:VCC"),
+        "74153": ("dual 4-to-1 multiplexer", "i:1/G i:B i:1C3 i:1C2 i:1C1 i:1C0 o:1Y g:GND o:2Y i:2C0 i:2C1 i:2C2 i:2C3 i:A i:2/G v:VCC"),
+        "74157": ("quad 2-to-1 multiplexer", "i:S i:1A i:1B o:1Y i:2A i:2B o:2Y g:GND o:3Y i:3B i:3A o:4Y i:4B i:4A i:/G v:VCC"),
+        "74161": ("4-bit counter", "i:/CLR i:CLK i:A i:B i:C i:D i:ENP g:GND i:/LOAD i:ENT o:QD o:QC o:QB o:QA o:RCO v:VCC"),
+        "74160": ("decade counter", "i:/CLR i:CLK i:A i:B i:C i:D i:ENP g:GND i:/LOAD i:ENT o:QD o:QC o:QB o:QA o:RCO v:VCC"),
+        "74162": ("decade counter", "i:/CLR i:CLK i:A i:B i:C i:D i:ENP g:GND i:/LOAD i:ENT o:QD o:QC o:QB o:QA o:RCO v:VCC"),
+        "74163": ("4-bit counter", "i:/CLR i:CLK i:A i:B i:C i:D i:ENP g:GND i:/LOAD i:ENT o:QD o:QC o:QB o:QA o:RCO v:VCC"),
+        "74164": ("8-bit shift register", "i:A i:B o:QA o:QB o:QC o:QD g:GND i:CLK i:/CLR o:QE o:QF o:QG o:QH v:VCC"),
+        "74165": ("8-bit shift register", "i:SH/LD i:CLK i:E i:F i:G i:H o:/QH g:GND o:QH i:SER i:A i:B i:C i:D i:CLKINH v:VCC"),
+        "74174": ("hex D flip-flop", "i:/CLR o:1Q i:1D i:2D o:2Q i:3D o:3Q g:GND i:CLK o:4Q i:4D o:5Q i:5D i:6D o:6Q v:VCC"),
+        "74175": ("quad D flip-flop", "i:/CLR o:1Q o:1/Q i:1D i:2D o:2/Q o:2Q g:GND i:CLK o:3Q o:3/Q i:3D i:4D o:4/Q o:4Q v:VCC"),
+        "74193": ("4-bit up/down counter", "i:B o:QB o:QA i:DOWN i:UP o:QC o:QD g:GND i:D i:C i:/LOAD o:/CO o:/BO i:CLR i:A v:VCC"),
+        "74240": ("octal inverting buffer", "i:1/G i:1A1 o:2Y4 i:1A2 o:2Y3 i:1A3 o:2Y2 i:1A4 o:2Y1 g:GND i:2A1 o:1Y4 i:2A2 o:1Y3 i:2A3 o:1Y2 i:2A4 o:1Y1 i:2/G v:VCC"),
+        "74244": ("octal buffer", "i:1/G i:1A1 o:2Y4 i:1A2 o:2Y3 i:1A3 o:2Y2 i:1A4 o:2Y1 g:GND i:2A1 o:1Y4 i:2A2 o:1Y3 i:2A3 o:1Y2 i:2A4 o:1Y1 i:2/G v:VCC"),
+        "74245": ("octal bus transceiver", "i:DIR b:A1 b:A2 b:A3 b:A4 b:A5 b:A6 b:A7 b:A8 g:GND b:B8 b:B7 b:B6 b:B5 b:B4 b:B3 b:B2 b:B1 i:/OE v:VCC"),
+        "74273": ("octal D flip-flop", "i:/CLR o:1Q i:1D i:2D o:2Q o:3Q i:3D i:4D o:4Q g:GND i:CLK o:5Q i:5D i:6D o:6Q o:7Q i:7D i:8D o:8Q v:VCC"),
+        "74373": ("octal latch", "i:/OE o:1Q i:1D i:2D o:2Q o:3Q i:3D i:4D o:4Q g:GND i:LE o:5Q i:5D i:6D o:6Q o:7Q i:7D i:8D o:8Q v:VCC"),
+        "74374": ("octal D flip-flop", "i:/OE o:1Q i:1D i:2D o:2Q o:3Q i:3D i:4D o:4Q g:GND i:CLK o:5Q i:5D i:6D o:6Q o:7Q i:7D i:8D o:8Q v:VCC"),
+        "74393": ("dual 4-bit counter", "i:1A i:1CLR o:1QA o:1QB o:1QC o:1QD g:GND o:2QD o:2QC o:2QB o:2QA i:2CLR i:2A v:VCC"),
+        "74541": ("octal buffer", "i:/G1 i:A1 i:A2 i:A3 i:A4 i:A5 i:A6 i:A7 i:A8 g:GND o:Y8 o:Y7 o:Y6 o:Y5 o:Y4 o:Y3 o:Y2 o:Y1 i:/G2 v:VCC"),
+        "74573": ("octal latch", "i:/OE i:D1 i:D2 i:D3 i:D4 i:D5 i:D6 i:D7 i:D8 g:GND i:LE o:Q8 o:Q7 o:Q6 o:Q5 o:Q4 o:Q3 o:Q2 o:Q1 v:VCC"),
+        "74574": ("octal D flip-flop", "i:/OE i:D1 i:D2 i:D3 i:D4 i:D5 i:D6 i:D7 i:D8 g:GND i:CLK o:Q8 o:Q7 o:Q6 o:Q5 o:Q4 o:Q3 o:Q2 o:Q1 v:VCC"),
+        "74595": ("shift register with latch", "o:QB o:QC o:QD o:QE o:QF o:QG o:QH g:GND o:QH' i:/SRCLR i:SRCLK i:RCLK i:/OE i:SER o:QA v:VCC"),
+        "7447": ("BCD to 7-segment decoder", "i:B i:C i:/LT b:/BI/RBO i:/RBI i:D i:A g:GND o:/e o:/d o:/c o:/b o:/a o:/g o:/f v:VCC"),
+        "7483": ("4-bit full adder", "i:A4 o:S3 i:A3 i:B3 v:VCC o:S2 i:B2 i:A2 o:S1 i:A1 i:B1 g:GND i:C0 o:C4 o:S4 i:B4"),
+        "7485": ("4-bit comparator", "i:B3 i:A<Bin i:A=Bin i:A>Bin o:A>Bout o:A=Bout o:A<Bout g:GND i:B0 i:A0 i:B1 i:A1 i:A2 i:B2 i:A3 v:VCC"),
+        "7490": ("decade counter", "i:CKB i:R0(1) i:R0(2) n:NC v:VCC i:R9(1) i:R9(2) o:QC o:QB g:GND o:QD o:QA n:NC i:CKA"),
+        "7493": ("4-bit counter", "i:CKB i:R0(1) i:R0(2) n:NC v:VCC n:NC n:NC o:QC o:QB g:GND o:QD o:QA n:NC i:CKA"),
+        "4001": ("quad 2-input NOR", "i:1A i:1B o:1Y o:2Y i:2A i:2B g:VSS i:3A i:3B o:3Y o:4Y i:4A i:4B v:VDD"),
+        "4011": ("quad 2-input NAND", "i:1A i:1B o:1Y o:2Y i:2A i:2B g:VSS i:3A i:3B o:3Y o:4Y i:4A i:4B v:VDD"),
+        "4071": ("quad 2-input OR", "i:1A i:1B o:1Y o:2Y i:2A i:2B g:VSS i:3A i:3B o:3Y o:4Y i:4A i:4B v:VDD"),
+        "4081": ("quad 2-input AND", "i:1A i:1B o:1Y o:2Y i:2A i:2B g:VSS i:3A i:3B o:3Y o:4Y i:4A i:4B v:VDD"),
+        "4070": ("quad 2-input XOR", "i:1A i:1B o:1Y o:2Y i:2A i:2B g:VSS i:3A i:3B o:3Y o:4Y i:4A i:4B v:VDD"),
+        "4093": ("quad Schmitt NAND", "i:1A i:1B o:1Y o:2Y i:2A i:2B g:VSS i:3A i:3B o:3Y o:4Y i:4A i:4B v:VDD"),
+        "4013": ("dual D flip-flop", "o:1Q o:1/Q i:1CLK i:1R i:1D i:1S g:VSS i:2S i:2D i:2R i:2CLK o:2/Q o:2Q v:VDD"),
+        "4017": ("decade counter / divider", "o:Q5 o:Q1 o:Q0 o:Q2 o:Q6 o:Q7 o:Q3 g:VSS o:Q8 o:Q4 o:Q9 o:CO i:/CE i:CLK i:RST v:VDD"),
+        "4040": ("12-bit ripple counter", "o:Q12 o:Q6 o:Q5 o:Q7 o:Q4 o:Q3 o:Q2 g:VSS o:Q1 i:CLK i:RST o:Q9 o:Q8 o:Q10 o:Q11 v:VDD"),
+        "4049": ("hex inverting buffer", "v:VDD o:1Y i:1A o:2Y i:2A o:3Y i:3A g:VSS i:4A o:4Y i:5A o:5Y n:NC i:6A o:6Y n:NC"),
+        "4050": ("hex buffer", "v:VDD o:1Y i:1A o:2Y i:2A o:3Y i:3A g:VSS i:4A o:4Y i:5A o:5Y n:NC i:6A o:6Y n:NC"),
+        "4051": ("8-channel analog mux", "b:X4 b:X6 b:X b:X7 b:X5 i:/INH g:VEE g:VSS i:C i:B i:A b:X3 b:X0 b:X1 b:X2 v:VDD"),
+        "4060": ("14-bit counter + oscillator", "o:Q12 o:Q13 o:Q14 o:Q6 o:Q5 o:Q7 o:Q4 g:VSS o:/φO o:φO i:φI i:RST o:Q9 o:Q8 o:Q10 v:VDD"),
+        "4066": ("quad bilateral switch", "b:1Y b:1Z b:2Z b:2Y i:2C i:3C g:VSS b:3Y b:3Z b:4Z b:4Y i:4C i:1C v:VDD"),
+        "4511": ("BCD to 7-segment latch/decoder", "i:B i:C i:/LT i:/BL i:LE i:D i:A g:VSS o:e o:d o:c o:b o:a o:g o:f v:VDD"),
+    ]
+
+    /// Known mistakes in minipro's logic test vectors (chip: pins), where the data sheet wins.
+    static let logicVectorQuirks: [String: Set<Int>] = ["74174": [7]]
+
+    /// The base part number: "74LS00" / "SN74HCT00N" / "CD4011BE" → "7400" / "4011".
+    static func logicBase(_ name: String) -> String {
+        let n = name.uppercased().split(separator: "@").first.map(String.init) ?? name.uppercased()
+        if let r = n.range(of: "74[A-Z]*([0-9]{2,6})", options: .regularExpression) {
+            let s = String(n[r])
+            let digits = s.dropFirst(2).drop { $0.isLetter }
+            return "74" + digits
+        }
+        if let r = n.range(of: "4[0-9]{3,4}", options: .regularExpression) { return String(n[r]) }
+        return n
+    }
+
+    /// Role of each pin from the test vectors: G/V power, 0/1 driven (input), C clock, L/H/Z sensed (output).
+    static func logicRoles(_ vectors: [[Character]], pins: Int) -> [Character] {
+        (0..<pins).map { p in
+            let s = Set(vectors.compactMap { p < $0.count ? $0[p] : nil })
+            if s.isEmpty || s == ["X"] { return "n" }
+            if s == ["G"] { return "g" }
+            if s == ["V"] { return "v" }
+            let driven = !s.isDisjoint(with: ["0", "1"]), sensed = !s.isDisjoint(with: ["L", "H", "Z"])
+            if s.contains("C") && !sensed { return "c" }
+            if driven && sensed { return "b" }
+            return sensed ? "o" : "i"
+        }
+    }
+
+    /// The test vectors of one chip from logicic.xml text.
+    static func logicVectors(xml: String, name: String) -> (pins: Int, group: String, vectors: [[Character]])? {
+        let target = name.uppercased()
+        var from = xml.startIndex
+        while let start = xml.range(of: "<ic ", range: from..<xml.endIndex),
+              let tagEnd = xml.range(of: ">", range: start.upperBound..<xml.endIndex),
+              let end = xml.range(of: "</ic>", range: tagEnd.upperBound..<xml.endIndex) {
+            let tag = xml[start.lowerBound..<tagEnd.upperBound]
+            func attr(_ a: String) -> String? {
+                guard let r = tag.range(of: a + "=\""), let e = tag.range(of: "\"", range: r.upperBound..<tag.endIndex) else { return nil }
+                return String(tag[r.upperBound..<e.lowerBound])
+            }
+            let group = attr("name") ?? ""
+            if group.uppercased().split(separator: ",").contains(where: { $0.trimmingCharacters(in: .whitespaces) == target }) {
+                let body = xml[tagEnd.upperBound..<end.lowerBound]
+                var vectors: [[Character]] = []
+                var f = body.startIndex
+                while let vs = body.range(of: "<vector", range: f..<body.endIndex),
+                      let gt = body.range(of: ">", range: vs.upperBound..<body.endIndex),
+                      let ve = body.range(of: "</vector>", range: gt.upperBound..<body.endIndex) {
+                    vectors.append(Array(body[gt.upperBound..<ve.lowerBound].filter { !$0.isWhitespace }))
+                    f = ve.upperBound
+                }
+                return (Int(attr("pins") ?? "") ?? vectors.first?.count ?? 0, group, vectors)
+            }
+            from = end.upperBound
+        }
+        return nil
+    }
+
+    /// Pinout of a logic chip: named pins for the common ones, otherwise the pin roles from the test vectors.
+    static func logic(name: String, pins: Int, group: String, vectors: [[Character]]) -> ChipPinout? {
+        guard pins >= 4, pins % 2 == 0 else { return nil }
+        let roles = logicRoles(vectors, pins: pins)
+        let members = [name] + group.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        let display = name.split(separator: "@").first.map(String.init) ?? name
+        for m in members {
+            let base = logicBase(m)
+            guard let entry = logicNames[base] ?? logicNames[m] else { continue }
+            let items = entry.pins.split(separator: " ")
+            guard items.count == pins else { continue }
+            let names = items.map { String($0.split(separator: ":", maxSplits: 1).last ?? "") }
+            let r = items.map { $0.first ?? "i" }
+            let title = base == logicBase(display) ? "\(display) – \(entry.title)" : "\(display) – same pinout as \(base) (\(entry.title))"
+            return ChipPinout(title: title, pins: names, notes: ["Pin names from the data sheet; outputs in green."], roles: r)
+        }
+        let labels = roles.map { r -> String in
+            switch r {
+            case "g": return "GND"
+            case "v": return "VCC"
+            case "o": return "out"
+            case "c": return "clock"
+            case "b": return "in/out"
+            case "n": return "–"
+            default: return "in"
+            }
+        }
+        return ChipPinout(title: "\(display) – pin functions", pins: labels,
+                          notes: ["Worked out from minipro's test vectors (in, out, clock, power); \"–\" = not used by the test. Check the data sheet for the signal names."],
+                          roles: roles)
+    }
 }

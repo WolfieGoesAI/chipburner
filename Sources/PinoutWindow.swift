@@ -15,7 +15,18 @@ final class PinoutView: NSView {
         return NSSize(width: bodyWidth + 2 * (labelWidth + 24), height: CGFloat(half) * pitch + 40)
     }
 
-    private func color(for label: String) -> NSColor {
+    private func color(for label: String, pin: Int) -> NSColor {
+        if let r = pinout?.roles, pin - 1 < r.count {
+            switch r[pin - 1] {
+            case "g": return .systemBlue
+            case "v": return .systemRed
+            case "o": return .systemGreen
+            case "c": return .systemOrange
+            case "b": return .systemPurple
+            case "n": return .tertiaryLabelColor
+            default: return .labelColor
+            }
+        }
         let l = label.uppercased()
         if l == "VCC" || l == "VDD" || l == "AVCC" { return .systemRed }
         if l == "GND" || l == "VSS" { return .systemBlue }
@@ -62,7 +73,7 @@ final class PinoutView: NSView {
                 let leg = NSRect(x: isLeft ? body.minX - 14 : body.maxX, y: y - 4, width: 14, height: 8)
                 NSColor.tertiaryLabelColor.setFill()
                 leg.fill()
-                let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color(for: label)]
+                let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color(for: label, pin: pin)]
                 let s = label as NSString
                 let w = s.size(withAttributes: attrs).width
                 let x = isLeft ? leg.minX - 6 - w : leg.maxX + 6

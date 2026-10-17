@@ -1717,6 +1717,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             snap(pw.window, "-pinout.png")
             pw.close()
         }
+        if let url = Minipro.shared.logicic, let xml = try? String(contentsOf: url) {
+            for (chip, suffix) in [("74161", "-pinout-logic.png"), ("4520", "-pinout-logic2.png")] {
+                if let v = Pinouts.logicVectors(xml: xml, name: chip),
+                   let p = Pinouts.logic(name: chip, pins: v.pins, group: v.group, vectors: v.vectors) {
+                    let pw = PinoutWindowController(chip: chip, pinout: p)
+                    pw.showWindow(nil)
+                    snap(pw.window, suffix)
+                    pw.close()
+                }
+            }
+        }
         var other = buffer
         if other.count > 0x120 { for i in [0x10, 0x11, 0x12, 0x105, 0x110] { other[i] ^= 0x5A } }
         openCompare(name: "patched.bin", data: other)
@@ -1773,16 +1784,23 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     /// Hardware… : check which programmer is connected, or run its self-test.
     // MARK: Compare, disassemble, pinout
 
+    private var logicicText: String?
+
     private var currentPinout: ChipPinout? {
         guard !chip.isEmpty else { return nil }
         let info = chipDetails
+        if info?.kind == .logic {
+            if logicicText == nil, let url = Minipro.shared.logicic { logicicText = try? String(contentsOf: url) }
+            guard let xml = logicicText, let v = Pinouts.logicVectors(xml: xml, name: chip) else { return nil }
+            return Pinouts.logic(name: chip, pins: v.pins, group: v.group, vectors: v.vectors)
+        }
         return Pinouts.find(chip: chip, size: info?.codeSize, isSRAM: info?.kind == .sram)
     }
 
     @objc func showPinout(_ sender: Any?) {
         guard requireChip() else { return }
         guard let p = currentPinout else {
-            showInfo("No pinout for \(chip)", "ChipBurner has pinouts for standard (JEDEC) EPROMs, EEPROMs, flash and SRAM in DIP packages, GALs, 8-pin serial memories and the common AVR, PIC and 8051 chips. For this one, please check its data sheet.")
+            showInfo("No pinout for \(chip)", "ChipBurner has pinouts for standard (JEDEC) EPROMs, EEPROMs, flash and SRAM in DIP packages, GALs, 8-pin serial memories, the common AVR, PIC and 8051 chips, and the logic chips in the test database. For this one, please check its data sheet.")
             return
         }
         PinoutWindowController(chip: chip, pinout: p).showWindow(nil)
