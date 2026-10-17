@@ -1615,6 +1615,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         setStatus("Ready")
     }
 
+    /// Build screenshot of the Fuses & Locks window for an example AVR.
+    func saveFuseScreenshot(to path: String) {
+        guard ChipDatabase.shared.isLoaded, let info = ChipDatabase.shared.info(for: "ATMEGA8A", programmer: "TL866A"),
+              let cfg = ChipDatabase.shared.config(for: info) else { print("SMOKE fuse screenshot skipped (database not loaded)"); return }
+        let c = ConfigWindowController(chip: "ATMEGA8A", config: cfg, wordSize: info.wordSize, lockWriteOnly: info.lockBitWriteOnly,
+                                       baseArgs: []) { _, _, done in done(false, "") }
+        c.showWindow(nil)
+        guard let content = c.window?.contentView else { return }
+        content.layoutSubtreeIfNeeded()
+        if let rep = content.bitmapImageRepForCachingDisplay(in: content.bounds) {
+            content.cacheDisplay(in: content.bounds, to: rep)
+            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+            print("SMOKE fuse screenshot saved: \(path)")
+        }
+    }
+
     /// Renders the window's content to a PNG file.
     func saveScreenshot(to path: String) {
         guard let content = window?.contentView else { return }

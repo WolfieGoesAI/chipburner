@@ -86,12 +86,12 @@ jobs:
       - name: Publish screenshot
         if: github.ref == 'refs/heads/main' && hashFiles('dist/screenshot.png') != ''
         run: |
-          mkdir -p /tmp/shot && cp dist/screenshot.png /tmp/shot/
+          mkdir -p /tmp/shot && cp dist/screenshot*.png /tmp/shot/
           cd /tmp/shot
           git init -q -b screenshots
           git config user.name "github-actions"
           git config user.email "github-actions@users.noreply.github.com"
-          git add screenshot.png
+          git add screenshot*.png
           git commit -q -m "Screenshot of ${GITHUB_SHA::7}"
           git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" screenshots
 
