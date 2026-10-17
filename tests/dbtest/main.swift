@@ -97,7 +97,7 @@ expect(spi.id == 0xEF4016 && spi.names == ["W25Q32BV@SOIC8", "W25Q32FV@SOIC8"], 
 
 let cfg = ConfigText.parse("lfuse = 0xe1\nhfuse = 0xd9\nlock = 0x3f\nconf_word = 0x3ffb\nuser_id0 = 0x0001\ncalibration bytes: 0x9a, 0x9b\n")
 expect(cfg == ["lfuse": 0xE1, "hfuse": 0xD9, "lock": 0x3F, "conf_word": 0x3FFB, "user_id0": 0x0001], "config text parsed")
-expect(ConfigText.line("lock", 0x3F, wide: false) == "lock = 0x3f" && ConfigText.line("conf_word", 0x3FFB, wide: true) == "conf_word = 0x3ffb", "config text written in minipro's format")
+expect(ConfigText.line("lock", 0x3F, wide: false) == "lock=0x3f" && ConfigText.line("conf_word", 0x3FFB, wide: true) == "conf_word=0x3ffb" && ConfigText.parse("lfuse=0x62\nhfuse=0xd9\n") == ["lfuse": 0x62, "hfuse": 0xD9], "config text written in minipro's format")
 
 // Which chips have fuses / user ID / lock bits (the Fuses & Locks window), by family.
 var families: [String: (count: Int, f: Bool, u: Bool, l: Bool, kinds: Set<String>, examples: [String])] = [:]

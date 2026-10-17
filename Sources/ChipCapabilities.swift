@@ -107,8 +107,10 @@ enum ConfigText {
         return out
     }
 
+    /// Exactly the layout minipro itself writes ("lfuse=0x62", no spaces): its config reader doesn't
+    /// accept spaces around the '='.
     static func line(_ name: String, _ value: UInt16, wide: Bool) -> String {
-        String(format: wide ? "%@ = 0x%04x" : "%@ = 0x%02x", name, value)
+        String(format: wide ? "%@=0x%04x" : "%@=0x%02x", name, value)
     }
 }
 
