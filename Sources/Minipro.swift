@@ -98,80 +98,111 @@ final class Minipro {
             completion(-1)
             return nil
         }
+        return Minipro.stream(p, onLine: onLine, completion: completion) ? p : nil
+    }
+
+    /// Starts `p` with stdout+stderr piped into a LineSplitter; `completion` runs on the main queue
+    /// after the process has exited and every line has been delivered. Returns false if it didn't start.
+    static func stream(_ p: Process, deliverOnMain: Bool = true,
+                       onLine: @escaping (String, Bool) -> Void,
+                       completion: @escaping (Int32) -> Void) -> Bool {
         let pipe = Pipe()
         p.standardOutput = pipe
         p.standardError = pipe
-        let splitter = LineSplitter(onLine: onLine)
-        pipe.fileHandleForReading.readabilityHandler = { handle in
-            let data = handle.availableData
-            if data.isEmpty {
-                handle.readabilityHandler = nil
-            } else {
+        let splitter = LineSplitter(deliverOnMain: deliverOnMain, onLine: onLine)
+        // One reader only: the output is read on one queue until end-of-file, and completion is
+        // reported once both the reading has finished and the process has exited. (Draining the pipe
+        // from the termination handler as well raced with the reader – minipro writes long tables in
+        // one burst at exit, and chunks were lost or spliced in the wrong order.)
+        let finished = DispatchGroup()
+        finished.enter()   // reading
+        finished.enter()   // process exit
+        let reader = pipe.fileHandleForReading
+        DispatchQueue.global(qos: .userInitiated).async {
+            while true {
+                let data = reader.availableData
+                if data.isEmpty { break }
                 splitter.feed(data)
             }
-        }
-        p.terminationHandler = { proc in
-            // Drain anything still buffered before reporting completion.
-            pipe.fileHandleForReading.readabilityHandler = nil
-            let rest = pipe.fileHandleForReading.readDataToEndOfFile()
-            splitter.feed(rest)
             splitter.flush()
-            let status = proc.terminationStatus
-            DispatchQueue.main.async { completion(status) }
+            finished.leave()
+        }
+        p.terminationHandler = { _ in finished.leave() }
+        finished.notify(queue: .main) {
+            completion(p.terminationStatus)
         }
         do {
             try p.run()
         } catch {
+            pipe.fileHandleForWriting.closeFile()   // lets the reader see end-of-file
             onLine("Could not start minipro: \(error.localizedDescription)", false)
             completion(-1)
-            return nil
+            return false
         }
-        return p
+        return true
     }
 }
 
 /// Splits a byte stream into lines on "\n" (finished lines) and "\r" (progress updates).
-private final class LineSplitter {
-    private var pending = ""
+/// Works on bytes, so a "\r\n" pair or a UTF-8 character split between two reads is handled.
+final class LineSplitter {
+    private var pending = Data()
     private let lock = NSLock()
     private let onLine: (String, Bool) -> Void
+    private let deliverOnMain: Bool
 
-    init(onLine: @escaping (String, Bool) -> Void) { self.onLine = onLine }
+    init(deliverOnMain: Bool = true, onLine: @escaping (String, Bool) -> Void) {
+        self.onLine = onLine
+        self.deliverOnMain = deliverOnMain
+    }
 
     func feed(_ data: Data) {
         guard !data.isEmpty else { return }
         lock.lock(); defer { lock.unlock() }
-        pending += String(decoding: data, as: UTF8.self)
-        var current = ""
+        pending.append(data)
+        let bytes = [UInt8](pending)
         var out: [(String, Bool)] = []
-        for ch in pending {
-            if ch == "\n" {
-                out.append((current, false)); current = ""
-            } else if ch == "\r" {
-                if !current.isEmpty { out.append((current, true)) }
-                current = ""
-            } else {
-                current.append(ch)
+        var start = 0
+        var i = 0
+        while i < bytes.count {
+            let b = bytes[i]
+            if b == 0x0A {
+                out.append((String(decoding: bytes[start..<i], as: UTF8.self), false))
+                start = i + 1
+            } else if b == 0x0D {
+                if i + 1 == bytes.count { break }                // wait: it may be "\r\n"
+                if bytes[i + 1] == 0x0A {
+                    out.append((String(decoding: bytes[start..<i], as: UTF8.self), false))
+                    i += 1
+                } else if i > start {
+                    out.append((String(decoding: bytes[start..<i], as: UTF8.self), true))
+                }
+                start = i + 1
             }
+            i += 1
         }
-        pending = current
+        pending = Data(bytes[start...])
         emit(out)
     }
 
     func flush() {
         lock.lock(); defer { lock.unlock() }
-        if !pending.isEmpty { emit([(pending, false)]); pending = "" }
+        var rest = [UInt8](pending)
+        if rest.last == 0x0D { rest.removeLast() }
+        if !rest.isEmpty { emit([(String(decoding: rest, as: UTF8.self), false)]) }
+        pending = Data()
     }
 
     private func emit(_ lines: [(String, Bool)]) {
-        let cleaned = lines.map { (stripANSI($0.0).trimmingCharacters(in: .whitespaces), $0.1) }
+        let cleaned = lines.map { (LineSplitter.stripANSI($0.0).trimmingCharacters(in: .whitespaces), $0.1) }
             .filter { !$0.0.isEmpty }
         guard !cleaned.isEmpty else { return }
         let cb = onLine
-        DispatchQueue.main.async { cleaned.forEach { cb($0.0, $0.1) } }
+        if deliverOnMain { DispatchQueue.main.async { cleaned.forEach { cb($0.0, $0.1) } } }
+        else { cleaned.forEach { cb($0.0, $0.1) } }
     }
 
-    private func stripANSI(_ s: String) -> String {
+    static func stripANSI(_ s: String) -> String {
         guard s.contains("\u{1B}") else { return s }
         return s.replacingOccurrences(of: "\u{1B}\\[[0-9;?]*[A-Za-z]", with: "", options: .regularExpression)
     }

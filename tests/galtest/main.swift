@@ -308,6 +308,71 @@ else { vecFailed += 1; print("FAIL PAL readout table parsing: \(String(describin
 let pv = PalReadout.vectors(PalReadout.types[0], range: 5..<6)[0]
 if String(pv) == "101000000G0LLLLLLLLV" { vecPassed += 1; print("ok   PAL readout vectors") }
 else { vecFailed += 1; print("FAIL PAL readout vectors: \(String(pv))") }
+// --logicic_out result file, in the exact layout of minipro's write_logic_file().
+func resultFile(_ t: PalReadout.PalType, _ table: [UInt16], from: Int) -> String {
+    var x = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<logicic>\n  <database device=\"LOGIC\">\n    <manufacturer name=\"Logic Ic\">\n      <ic name=\"PALREAD\" type=\"5\" voltage=\"5V\" pins=\"20\">\n"
+    for (i, bits) in table.enumerated() {
+        var v = PalReadout.vectors(t, range: (from + i)..<(from + i + 1))[0]
+        for (j, p) in t.outputs.enumerated() { v[p - 1] = (bits >> UInt16(j)) & 1 == 1 ? "H" : "L" }
+        x += "        <vector id=\"" + String(format: "%02d", i) + "\"> " + v.map { "\($0) " }.joined() + "</vector>\n"
+    }
+    return x + "      </ic>\n    </manufacturer>\n  </database>\n</logicic>\n"
+}
+do {
+    let t = PalReadout.types[0]
+    let table = simulatedTable(t, terms: randomTerms(t, perOutput: 3), activeLow: false)
+    let got = PalReadout.parseResultFile(resultFile(t, table, from: 0), type: t, expected: table.count)
+    if got == table { vecPassed += 1; print("ok   PAL readout result file (\(table.count) vectors)") }
+    else { vecFailed += 1; print("FAIL PAL readout result file: \(got?.count ?? -1) rows") }
+    let short = PalReadout.parseResultFile(resultFile(t, Array(table.prefix(10)), from: 0), type: t, expected: 11)
+    if short == nil { vecPassed += 1; print("ok   PAL readout result file: incomplete file rejected") }
+    else { vecFailed += 1; print("FAIL PAL readout result file: incomplete file accepted") }
+
+    // The printed table exactly as tl866a_logic_ic_test prints it (colour codes, '-' marks).
+    var printed = "Found TL866A 03.2.86 (0x256)\n      " + (1...20).map { String(format: "%-3d", $0) }.joined() + "\n"
+    for (k, bits) in table.enumerated() {
+        let v = PalReadout.vectors(t, range: k..<(k + 1))[0]
+        printed += String(format: "%04d: ", k)
+        for (pi, c) in v.enumerated() {
+            let oi = t.outputs.firstIndex(of: pi + 1)
+            let err = oi.map { (bits >> UInt16($0)) & 1 == 1 } ?? false
+            printed += (err ? "\u{1B}[0;91m" : "\u{1B}[0m") + String(c) + (err ? "-" : " ") + " "
+        }
+        printed += "\u{1B}[0m\n"
+    }
+    printed += "Logic test failed: 99 errors encountered.\n"
+
+    // 1. Splitter fed in odd chunk sizes (escape codes and line ends cut in half).
+    var lines: [String] = []
+    let splitter = LineSplitter(deliverOnMain: false) { l, prog in if !prog { lines.append(l) } }
+    let bytes = [UInt8](printed.utf8)
+    var pos = 0, size = 1
+    while pos < bytes.count { let e = min(bytes.count, pos + size); splitter.feed(Data(bytes[pos..<e])); pos = e; size = size % 97 + 7 }
+    splitter.flush()
+    let viaSplitter = PalReadout.parseTable(lines.joined(separator: "\n"), type: t, expected: table.count)
+    if viaSplitter == table { vecPassed += 1; print("ok   line splitter keeps the logic table intact") }
+    else { vecFailed += 1; print("FAIL line splitter: \(lines.count) lines, parsed \(viaSplitter?.count ?? -1)") }
+
+    // 2. A real child process writing the whole table in one burst at exit, like minipro.
+    let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("galtest-table.txt")
+    try? printed.write(to: tmp, atomically: true, encoding: .utf8)
+    var streamed: [String] = []
+    var status: Int32? = nil
+    for attempt in 1...20 {
+        streamed = []; status = nil
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/sh")
+        p.arguments = ["-c", "cat '\(tmp.path)'; exit 1"]
+        _ = Minipro.stream(p, onLine: { l, prog in if !prog { streamed.append(l) } }, completion: { status = $0 })
+        let deadline = Date().addingTimeInterval(20)
+        while status == nil && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+        if PalReadout.parseTable(streamed.joined(separator: "\n"), type: t, expected: table.count) != table || status != 1 {
+            vecFailed += 1; print("FAIL process streaming (attempt \(attempt)): \(streamed.count) lines, status \(String(describing: status))")
+            break
+        }
+        if attempt == 20 { vecPassed += 1; print("ok   process output streamed completely, 20 of 20 runs (\(streamed.count) lines)") }
+    }
+}
 print("galtest vectors: \(vecPassed) passed, \(vecFailed) failed")
 print("galtest assemble: \(asmPassed) passed, \(asmFailed) failed; errors: \(errPassed) passed, \(errFailed) failed")
 let allOK = failed == 0 && passed > 0 && asmFailed == 0 && asmPassed > 0 && errFailed == 0 && errPassed > 0 && vecFailed == 0 && vecPassed > 0

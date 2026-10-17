@@ -219,7 +219,7 @@ NOTE="${DBT//'%'/'%25'}"; NOTE="${NOTE//$'\n'/'%0A'}"
 echo "::notice title=Database reader test::$NOTE"
 
 log "Test: JED decoder against Galette's assembled test cases"
-xcrun swiftc -O -sdk "$SDK" "$ROOT/Sources/GalDecoder.swift" "$ROOT/Sources/GalAssembler.swift" "$ROOT/Sources/LogicVectors.swift" "$ROOT/Sources/PalReadout.swift" "$ROOT/tests/galtest/main.swift" -o "$WORK/galtest"
+xcrun swiftc -O -sdk "$SDK" "$ROOT/Sources/GalDecoder.swift" "$ROOT/Sources/GalAssembler.swift" "$ROOT/Sources/LogicVectors.swift" "$ROOT/Sources/PalReadout.swift" "$ROOT/Sources/Minipro.swift" "$ROOT/tests/galtest/main.swift" -o "$WORK/galtest"
 GT="$("$WORK/galtest" "$ROOT/tests/gal/cases" 2>&1)" || { echo "$GT"; printf '### galtest\n%s\n' "$(grep -v '^ok ' <<<"$GT" | grep -v '^;' | head -150)" > "$ROOT/diag.txt"; false; }
 echo "$GT"
 note "JED decoder test" "$(grep -v '^;' <<<"$GT" | tail -40)"
@@ -229,8 +229,6 @@ DIAG=""
 diag() { DIAG+="### $1"$'\n'"$2"$'\n\n'; }
 diag "minipro source" "$MINIPRO_DESC"$'\n'"$("$APP/Contents/MacOS/minipro" --version 2>&1 | head -5)"
 diag "Test-related chip types" "$(grep -E '^(SRAM|DRAMLOGIC|LOGICNAMES|TL866A entries)' <<<"$DBT")"
-diag "tl866a logic test" "$(sed -n '/^int tl866a_logic_ic_test/,/^}/p' "$WORK/src/minipro-git/src/tl866a.c" | head -150)"
-diag "logic test caller" "$(grep -n -B30 -A40 'write_logic_file(' "$WORK/src/minipro-git/src/"*.c | grep -v 'int write_logic_file' | head -150 | cut -c40-240)"
 diag "Fuses & Locks families" "$(grep -E '^(FL|FUSES)' <<<"$DBT")"
 printf '%s' "$DIAG" > "$ROOT/diag.txt"
 

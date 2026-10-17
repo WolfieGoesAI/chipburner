@@ -172,12 +172,19 @@ final class PalReadoutWindowController: NSWindowController {
             let url = tempURL("pal-readout.xml")
             do { try test.xml().write(to: url, atomically: true, encoding: .utf8) } catch { say("✗ Could not write a temporary file."); done(nil); return }
             progress.doubleValue = (Double(pass - 1) * Double(total) + Double(start)) / Double(total * (twiceBox.state == .on ? 2 : 1)) * 100
-            run("PAL readout pass \(pass): \(start)–\(end - 1)", ["-p", test.safeName, "-T"], url) { [weak self] _, output in
+            let resultURL = tempURL("pal-readout-result.xml")
+            try? FileManager.default.removeItem(at: resultURL)
+            run("PAL readout pass \(pass): \(start)–\(end - 1)", ["-p", test.safeName, "-T", "--logicic_out", resultURL.path], url) { [weak self] _, output in
                 guard let self = self else { return }
-                // minipro exits with an error whenever an output reads high – that's expected here.
-                guard let part = PalReadout.parseTable(output, type: t, expected: end - start) else {
+                // minipro writes the measured pin levels of every vector to the result file; the
+                // printed table (only produced without --logicic_out) is the fallback.
+                let fromFile = (try? String(contentsOf: resultURL)).flatMap { PalReadout.parseResultFile($0, type: t, expected: end - start) }
+                guard let part = fromFile ?? PalReadout.parseTable(output, type: t, expected: end - start) else {
                     self.say("✗ The logic tester didn't return a complete table. minipro said:")
                     output.components(separatedBy: .newlines).filter { !$0.isEmpty && !$0.contains("overridden database") && $0.range(of: "^\\s*\\d{4}:", options: .regularExpression) == nil }.suffix(6).forEach { self.say("    " + $0) }
+                    if let xml = try? String(contentsOf: resultURL) {
+                        self.say("    (result file: \(LogicTest.parseXML(xml)?.vectors.count ?? 0) of \(end - start) vectors)")
+                    }
                     done(nil); return
                 }
                 rows += part

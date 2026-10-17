@@ -53,6 +53,28 @@ enum PalReadout {
         return rows.count == expected ? rows : nil
     }
 
+    /// Output bits from the file minipro writes with --logicic_out: every vector again, with the
+    /// level each output pin actually had (H, L, or Z when it floated). Returns nil if the file is
+    /// missing vectors or has a pin state that isn't a level.
+    static func parseResultFile(_ xml: String, type t: PalType, expected: Int) -> [UInt16]? {
+        guard let test = LogicTest.parseXML(xml), test.vectors.count == expected else { return nil }
+        var rows: [UInt16] = []
+        rows.reserveCapacity(expected)
+        for v in test.vectors {
+            guard v.count == pins else { return nil }
+            var bits: UInt16 = 0
+            for (i, p) in t.outputs.enumerated() {
+                switch v[p - 1] {
+                case "H", "Z": bits |= 1 << UInt16(i)     // a bipolar PAL output never floats; Z means pulled high
+                case "L": break
+                default: return nil
+                }
+            }
+            rows.append(bits)
+        }
+        return rows
+    }
+
     // MARK: Minimisation
 
     /// A product term: `mask` says which inputs appear, `value` their required levels.
