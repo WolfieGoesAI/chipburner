@@ -49,13 +49,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return alert.runModal() == .alertSecondButtonReturn ? .terminateNow : .terminateCancel
     }
 
+    /// About box: version and build number (the GitHub build), commit, build date, the bundled
+    /// minipro and chip database, and credits.
+    @objc func showAbout(_ sender: Any?) {
+        let info = Bundle.main.infoDictionary ?? [:]
+        func v(_ k: String) -> String { (info[k] as? String).flatMap { $0.hasPrefix("__") ? nil : $0 } ?? "unknown" }
+        let version = v("CFBundleShortVersionString"), build = v("CFBundleVersion")
+        var dbLine = ""
+        if let url = Minipro.shared.infoic,
+           let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+           let size = attrs[.size] as? NSNumber {
+            dbLine = "Chip database: infoic.xml from minipro (\(size.intValue / 1_048_576) MB)\n"
+        }
+        let text = """
+            Made by WolfieGoesAI
+            Build \(build) · commit \(v("ChipBurnerCommit")) · built \(v("ChipBurnerBuildDate"))
+            For the TL866A/CS, TL866II+, T48 and T56 programmers · macOS 10.14 and later
+
+            minipro \(v("ChipBurnerMinipro")) – GNU GPL v3
+            gitlab.com/DavidGriffith/minipro
+            \(dbLine)libusb \(v("ChipBurnerLibusb")) – GNU LGPL 2.1
+            GAL assembler based on Galette by Simon Frankau – MIT licence
+
+            Source code: github.com/WolfieGoesAI/chipburner
+            """
+        let para = NSMutableParagraphStyle()
+        para.alignment = .center
+        let credits = NSAttributedString(string: text, attributes: [
+            .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+            .foregroundColor: NSColor.labelColor,
+            .paragraphStyle: para,
+        ])
+        NSApp.orderFrontStandardAboutPanel(options: [
+            .applicationVersion: "\(version) (build \(build))",
+            .credits: credits,
+        ])
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     private func buildMenu() -> NSMenu {
         let main = NSMenu()
         let name = ProcessInfo.processInfo.processName
 
         let appItem = NSMenuItem(); main.addItem(appItem)
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "About \(name)", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(withTitle: "About \(name)", action: #selector(showAbout(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Hide \(name)", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(withTitle: "Quit \(name)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")

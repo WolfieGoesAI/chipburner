@@ -31,6 +31,14 @@
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>NSHumanReadableCopyright</key>
-	<string>GUI for minipro (GPLv3, gitlab.com/DavidGriffith/minipro)</string>
+	<string>© 2026 WolfieGoesAI</string>
+	<key>ChipBurnerCommit</key>
+	<string>__COMMIT__</string>
+	<key>ChipBurnerBuildDate</key>
+	<string>__BUILDDATE__</string>
+	<key>ChipBurnerMinipro</key>
+	<string>__MINIPRO__</string>
+	<key>ChipBurnerLibusb</key>
+	<string>__LIBUSB__</string>
 </dict>
 </plist>

@@ -145,7 +145,12 @@ This app runs minipro ($MINIPRO_DESC), licensed under the GNU GPL v3.
 Source code: https://gitlab.com/DavidGriffith/minipro
 libusb $LIBUSB_VERSION (LGPL 2.1): https://github.com/libusb/libusb
 EOF
-sed -e "s/__VERSION__/$APP_VERSION/" -e "s/__BUILD__/$BUILD_NUMBER/" "$ROOT/Resources/Info.plist" > "$APP/Contents/Info.plist"
+APP_COMMIT="$(git -C "$ROOT" rev-parse --short=7 HEAD 2>/dev/null || echo unknown)"
+BUILD_DATE="$(date -u +%Y-%m-%d)"
+sed -e "s/__VERSION__/$APP_VERSION/" -e "s/__BUILD__/$BUILD_NUMBER/" \
+    -e "s|__COMMIT__|$APP_COMMIT|" -e "s|__BUILDDATE__|$BUILD_DATE|" \
+    -e "s|__MINIPRO__|$MINIPRO_DESC|" -e "s|__LIBUSB__|${LIBUSB_VERSION:-}|" \
+    "$ROOT/Resources/Info.plist" > "$APP/Contents/Info.plist"
 plutil -lint "$APP/Contents/Info.plist"
 
 # ---------- smoke tests (no programmer needed) ----------
@@ -230,6 +235,7 @@ diag() { DIAG+="### $1"$'\n'"$2"$'\n\n'; }
 diag "minipro source" "$MINIPRO_DESC"$'\n'"$("$APP/Contents/MacOS/minipro" --version 2>&1 | head -5)"
 diag "Test-related chip types" "$(grep -E '^(SRAM|DRAMLOGIC|LOGICNAMES|TL866A entries)' <<<"$DBT")"
 diag "get_fuse_value" "$(grep -rn -A40 '^int get_fuse_value\|^static int get_fuse_value' "$WORK/src/minipro-git/src/" | cut -c1-200 | sed 's|.*/src/||' | head -60)"
+diag "About box info" "$(plutil -p "$APP/Contents/Info.plist" | grep -E 'ChipBurner|Version|Copyright')"
 diag "Fuses & Locks families" "$(grep -E '^(FL|FUSES)' <<<"$DBT")"
 printf '%s' "$DIAG" > "$ROOT/diag.txt"
 
