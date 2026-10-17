@@ -230,7 +230,7 @@ diag() { DIAG+="### $1"$'\n'"$2"$'\n\n'; }
 diag "minipro source" "$MINIPRO_DESC"$'\n'"$("$APP/Contents/MacOS/minipro" --version 2>&1 | head -5)"
 diag "Test-related chip types" "$(grep -E '^(SRAM|DRAMLOGIC|LOGICNAMES|TL866A entries)' <<<"$DBT")"
 diag "get_fuse_value" "$(grep -rn -A40 '^int get_fuse_value\|^static int get_fuse_value' "$WORK/src/minipro-git/src/" | cut -c1-200 | sed 's|.*/src/||' | head -60)"
-diag "firmware update" "$("$APP/Contents/MacOS/minipro" --help 2>&1 | grep -i -A1 'update\|-F' | head -8; grep -rn -i 'update.dat\|updateII\|bootloader\|firmware' "$WORK/src/minipro-git/src/main.c" | head -25 | cut -c1-200 | sed 's|.*/src/||')"
+diag "firmware prompts" "$(grep -rn -i 'getchar\|fgets\|scanf\|y/n\|confirm' "$WORK/src/minipro-git/src/"*.c | cut -c1-200 | sed 's|.*/src/||' | head -20; sed -n '/^int tl866a_firmware_update/,/^}/p' "$WORK/src/minipro-git/src/tl866a.c" | grep -n 'printf\|return' | head -40 | cut -c1-160)"
 diag "Fuses & Locks families" "$(grep -E '^(FL|FUSES)' <<<"$DBT")"
 printf '%s' "$DIAG" > "$ROOT/diag.txt"
 
