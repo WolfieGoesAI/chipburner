@@ -229,8 +229,8 @@ DIAG=""
 diag() { DIAG+="### $1"$'\n'"$2"$'\n\n'; }
 diag "minipro source" "$MINIPRO_DESC"$'\n'"$("$APP/Contents/MacOS/minipro" --version 2>&1 | head -5)"
 diag "Test-related chip types" "$(grep -E '^(SRAM|DRAMLOGIC|LOGICNAMES|TL866A entries)' <<<"$DBT")"
-diag "ATMEGA328P in infoic.xml" "$(grep -n -i 'ATMEGA328P\b\|ATMEGA328P@\|ATMEGA328P,' "$INFOIC" | head -8 | cut -c1-400; grep -n -i -A14 '<config name="ATMEGA328\|<config name="ATMEGA88\|<config name="ATMEGA48' "$INFOIC" | head -60 | cut -c1-300)"
-diag "AVR erase/fuse code" "$(grep -n -i -B3 -A25 'avr.*fuse\|spien' "$WORK/src/minipro-git/src/tl866a.c" | head -80 | cut -c1-200)"
+diag "ATMEGA328P in infoic.xml" "$(sed -n '33745,33770p' "$INFOIC" | cut -c1-200; C=$(sed -n '33745,33770p' "$INFOIC" | grep -o 'config="[^"]*"' | head -1 | cut -d'"' -f2); echo "config: $C"; grep -n -A16 "<config name=\"$C\"" "$INFOIC" | head -40 | cut -c1-250)"
+diag "AVR fuse handling" "$(grep -n -i -B2 -A12 'chip_erase\|erase' "$WORK/src/minipro-git/src/tl866a.c" | grep -i -B2 -A12 'fuse' | head -60 | cut -c1-200)"
 diag "Fuses & Locks families" "$(grep -E '^(FL|FUSES)' <<<"$DBT")"
 printf '%s' "$DIAG" > "$ROOT/diag.txt"
 
