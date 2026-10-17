@@ -90,7 +90,7 @@ final class Minipro {
     /// `onLine(text, isProgress)` is called on the main thread; progress lines are the ones
     /// minipro rewrites in place with a carriage return.
     @discardableResult
-    func run(_ args: [String], logicic: URL? = nil,
+    func run(_ args: [String], logicic: URL? = nil, answer: String? = nil,
              onLine: @escaping (String, Bool) -> Void,
              completion: @escaping (Int32) -> Void) -> Process? {
         guard let p = makeProcess(args, includeDB: true, logicic: logicic) else {
@@ -98,7 +98,15 @@ final class Minipro {
             completion(-1)
             return nil
         }
-        return Minipro.stream(p, onLine: onLine, completion: completion) ? p : nil
+        // `answer` is typed into minipro's own question (e.g. "y" for its firmware-update prompt).
+        var input: Pipe?
+        if answer != nil { input = Pipe(); p.standardInput = input }
+        guard Minipro.stream(p, onLine: onLine, completion: completion) else { return nil }
+        if let a = answer, let input = input {
+            input.fileHandleForWriting.write((a + "\n").data(using: .utf8)!)
+            input.fileHandleForWriting.closeFile()
+        }
+        return p
     }
 
     /// Starts `p` with stdout+stderr piped into a LineSplitter; `completion` runs on the main queue

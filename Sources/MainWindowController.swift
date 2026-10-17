@@ -723,7 +723,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     }
 
     /// Runs one minipro job with progress and logging; `done` gets success and the full output.
-    private func runJob(_ title: String, _ args: [String], logicic: URL? = nil, then done: ((Bool, String) -> Void)? = nil) {
+    private func runJob(_ title: String, _ args: [String], logicic: URL? = nil, answer: String? = nil, then done: ((Bool, String) -> Void)? = nil) {
         guard !isBusy else { return }
         isBusy = true
         progress.doubleValue = 0
@@ -731,7 +731,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         log("▶︎ \(title): minipro \(args.joined(separator: " "))")
         let percent = try? NSRegularExpression(pattern: "(\\d{1,3})%")
         var collected: [String] = []
-        running = Minipro.shared.run(args, logicic: logicic, onLine: { [weak self] line, isProgress in
+        running = Minipro.shared.run(args, logicic: logicic, answer: answer, onLine: { [weak self] line, isProgress in
             guard let self = self else { return }
             if isProgress {
                 self.setStatus(line)
@@ -1765,7 +1765,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
                     confirm.addButton(withTitle: "Cancel")
                     confirm.beginSheetModal(for: w) { [weak self] c in
                         guard let self = self, c == .alertFirstButtonReturn else { return }
-                        self.runJob("Firmware upgrade", ["-F", url.path]) { [weak self] ok, output in
+                        // minipro asks "continue with firmware update? y/n" – already confirmed above.
+                        self.runJob("Firmware upgrade", ["-F", url.path], answer: "y") { [weak self] ok, output in
                             guard let self = self else { return }
                             let lines = output.components(separatedBy: .newlines)
                                 .filter { !$0.isEmpty && !$0.contains("overridden database") }
