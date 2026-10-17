@@ -54,7 +54,7 @@ final class LoadOptions: NSObject {
     enum Part: Int { case whole, even, odd, lower, upper }
     enum Combine: Int { case none, thisIsEven, thisIsOdd, append, placeAt }
 
-    let view: NSView
+    private(set) var view = NSView()
     private let partPopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let combinePopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let addressField = NSTextField(string: "0")
@@ -66,6 +66,7 @@ final class LoadOptions: NSObject {
     var address: String { addressField.stringValue }
 
     init(canPlace: Bool) {
+        super.init()
         ["Whole file", "Even bytes only (0, 2, 4 … – low byte of each word)", "Odd bytes only (1, 3, 5 … – high byte of each word)",
          "Lower half of the file", "Upper half of the file"].forEach { partPopup.addItem(withTitle: $0) }
         ["Nothing – load just this file",
@@ -93,7 +94,6 @@ final class LoadOptions: NSObject {
         stack.edgeInsets = NSEdgeInsets(top: 10, left: 16, bottom: 10, right: 16)
         stack.frame.size = stack.fittingSize
         view = stack
-        super.init()
         combinePopup.target = self
         combinePopup.action = #selector(changed(_:))
         changed(nil)
@@ -116,7 +116,7 @@ final class LoadOptions: NSObject {
 final class SaveOptions: NSObject {
     enum Part: Int { case whole, selection, even, odd, bothHalves, lower, upper }
 
-    let view: NSView
+    private(set) var view = NSView()
     private weak var panel: NSSavePanel?
     private let formatPopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let partPopup = NSPopUpButton(frame: .zero, pullsDown: false)
@@ -130,6 +130,7 @@ final class SaveOptions: NSObject {
 
     init(panel: NSSavePanel, hasSelection: Bool, initial: FileFormat) {
         self.panel = panel
+        super.init()
         FileFormat.allCases.forEach { formatPopup.addItem(withTitle: $0.title) }
         formatPopup.selectItem(at: initial.rawValue)
         ["Whole buffer", "Selection only", "Even bytes only (low EPROM of a pair)", "Odd bytes only (high EPROM of a pair)",
@@ -151,7 +152,6 @@ final class SaveOptions: NSObject {
         stack.edgeInsets = NSEdgeInsets(top: 10, left: 16, bottom: 10, right: 16)
         stack.frame.size = stack.fittingSize
         view = stack
-        super.init()
         formatPopup.target = self
         formatPopup.action = #selector(formatChanged(_:))
         formatChanged(nil)
