@@ -230,6 +230,7 @@ diag() { DIAG+="### $1"$'\n'"$2"$'\n\n'; }
 diag "minipro source" "$MINIPRO_DESC"$'\n'"$("$APP/Contents/MacOS/minipro" --version 2>&1 | head -5)"
 diag "Test-related chip types" "$(grep -E '^(SRAM|DRAMLOGIC|LOGICNAMES|TL866A entries)' <<<"$DBT")"
 diag "get_fuse_value" "$(grep -rn -A40 '^int get_fuse_value\|^static int get_fuse_value' "$WORK/src/minipro-git/src/" | cut -c1-200 | sed 's|.*/src/||' | head -60)"
+diag "presence check" "$(grep -rn -B3 -A40 'presence_check\b.*{\|void print_presence\|is_presence\|presence_check)' "$WORK/src/minipro-git/src/main.c" | cut -c1-180 | sed 's|.*/src/||' | head -90; grep -rn 'Serial code\|Found %s' "$WORK/src/minipro-git/src/"*.c | cut -c1-200 | sed 's|.*/src/||' | head)"
 diag "Fuses & Locks families" "$(grep -E '^(FL|FUSES)' <<<"$DBT")"
 printf '%s' "$DIAG" > "$ROOT/diag.txt"
 
