@@ -25,6 +25,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     private let chipInfoLabel = NSTextField(labelWithString: "")
     private let bufferLabel = NSTextField(labelWithString: "Buffer: empty")
     private var programmerModel: String?
+    /// "TL866A – Serial … – Firmware …", shown in the Hardware… dialog (the main window shows the model only).
+    private var programmerDetails: String?
     private let statusLabel = NSTextField(labelWithString: "Ready")
     private let progress = NSProgressIndicator()
     private let hexEditor = HexEditorView()
@@ -761,7 +763,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             let all = collected.joined(separator: "\n")
             // Every job prints the programmer's firmware and serial number; keep the top line current.
             if let model = self.programmerModel, all.contains("Serial code:") {
-                self.programmerLabel.stringValue = Minipro.programmerSummary(model: model, from: all)
+                self.programmerDetails = Minipro.programmerSummary(model: model, from: all)
             }
             done?(ok, all)
         })
@@ -784,7 +786,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
                     .filter { !$0.isEmpty && !$0.contains("overridden database") }
                 if r.status == 0, let model = Minipro.shared.updateProgrammerType(from: r.output) {
                     self.programmerModel = model
-                    self.programmerLabel.stringValue = Minipro.programmerSummary(model: model, from: info)
+                    self.programmerLabel.stringValue = model
+                    self.programmerDetails = Minipro.programmerSummary(model: model, from: info)
                 } else {
                     let first = lines.first ?? "No answer"
                     self.programmerLabel.stringValue = r.status == 0 ? first : "Not found – \(first)"
@@ -1721,7 +1724,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     @objc func hardwareMenu(_ sender: Any?) {
         guard let w = window, !isBusy else { return }
         let a = NSAlert()
-        a.messageText = "Hardware"
+        a.messageText = programmerDetails.map { "Hardware: " + $0 } ?? "Hardware"
         a.informativeText = """
             Check Programmer finds the connected programmer and shows its model, firmware and serial number.
 
