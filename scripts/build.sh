@@ -229,6 +229,10 @@ DIAG=""
 diag() { DIAG+="### $1"$'\n'"$2"$'\n\n'; }
 diag "minipro source" "$MINIPRO_DESC"$'\n'"$("$APP/Contents/MacOS/minipro" --version 2>&1 | head -5)"
 diag "Test-related chip types" "$(grep -E '^(SRAM|DRAMLOGIC|LOGICNAMES|TL866A entries)' <<<"$DBT")"
+XI="$APP/Contents/Resources/minipro/infoic.xml"
+diag "PAL entries" "$(grep -n -i -o -E 'name="[^"]*(PAL1[0-9][HLRP][0-9]|10H8|PAL20|PAL16|PALCE|TIBPAL|DMPAL|AMPAL)[^"]*"' "$XI" | head -40)"
+diag "PAL entries in TL866A section" "$(L1=$(grep -n 'type="INFOIC"' "$XI" | head -1 | cut -d: -f1); sed -n "${L1},\$p" "$XI" | grep -i -o -E 'name="[^"]*(PAL|10H8)[^"]*"' | head -30)"
+diag "logicic_out writer" "$(grep -n -A30 'int write_logic_file' "$WORK/src/minipro-git/src/"*.c | head -50 | cut -c1-200)"
 diag "Fuses & Locks families" "$(grep -E '^(FL|FUSES)' <<<"$DBT")"
 printf '%s' "$DIAG" > "$ROOT/diag.txt"
 
