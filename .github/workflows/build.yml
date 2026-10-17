@@ -85,6 +85,7 @@ jobs:
 
       - name: Publish screenshot
         if: github.ref == 'refs/heads/main' && hashFiles('dist/screenshot.png') != ''
+        continue-on-error: true
         run: |
           mkdir -p /tmp/shot && cp dist/screenshot*.png /tmp/shot/
           cd /tmp/shot
