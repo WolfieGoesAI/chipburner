@@ -202,7 +202,7 @@ for pld in files.filter({ $0.hasSuffix(".pld") }).sorted() {
           let p = parsePLD(src), let d = try? GalDecoder.decode(try JEDECFile.parse(jedText)) else { continue }
     let g = GalTestGenerator.generate(d)
     var problems = g.test.problems()
-    let registered = p.eqns.values.contains { $0.kind == .registered }
+    let registered = p.eqs.values.contains { $0.kind == .registered }
     if registered && p.chip != "GAL20RA10" {
         if !g.test.vectors.allSatisfy({ $0[0] == "C" }) { problems.append("registered design without clock pulses on pin 1") }
         if g.checkedOutputs.isEmpty { problems.append("no registered output ever becomes known") }
@@ -222,7 +222,7 @@ for pld in files.filter({ $0.hasSuffix(".pld") }).sorted() {
             }
             return any
         }
-        for (pin, e) in p.eqns {
+        for (pin, e) in p.eqs {
             guard let t = e.term else { continue }
             let ch = v[pin - 1]
             if let en = e.enable, let env = evalSum(en), !env {
