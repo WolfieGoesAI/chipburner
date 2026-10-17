@@ -10,12 +10,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.showWindow(nil)
         controller.window?.center()
         NSApp.activate(ignoringOtherApps: true)
+        let mp = Minipro.shared
+        DispatchQueue.global(qos: .utility).async {
+            ChipDatabase.shared.load(infoic: mp.infoic, logicic: mp.logicic)
+            DispatchQueue.main.async { controller.updateChipInfo() }
+        }
         if ProcessInfo.processInfo.environment["CHIPBURNER_SMOKETEST"] != nil {
             let shot = ProcessInfo.processInfo.environment["CHIPBURNER_SCREENSHOT"]
             if shot != nil {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { controller.prepareScreenshot() }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4) { controller.prepareScreenshot() }
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 7) {
                 if let path = shot {
                     controller.saveScreenshot(to: path)
                     controller.saveFuseScreenshot(to: (path as NSString).deletingPathExtension + "-fuses.png")
@@ -27,11 +32,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         controller.checkProgrammer(nil)
-        let mp = Minipro.shared
-        DispatchQueue.global(qos: .utility).async {
-            ChipDatabase.shared.load(infoic: mp.infoic, logicic: mp.logicic)
-            DispatchQueue.main.async { controller.updateChipInfo() }
-        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }

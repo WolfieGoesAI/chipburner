@@ -240,7 +240,7 @@ for _ in $(seq 1 60); do kill -0 "$SMOKE_PID" 2>/dev/null || break; sleep 1; don
 kill "$SMOKE_PID" 2>/dev/null || true
 SMOKE="$(cat "$WORK/smoke.log")"
 echo "$SMOKE"
-diag "App launch smoke test" "$(grep -v -i 'overridden database' <<<"$SMOKE" | tail -40)"
+diag "App launch smoke test" "$(grep -v -i 'overridden database' <<<"$SMOKE" | grep -v '^SMOKE  \|^SMOKE row' | tail -40)"
 grep -q "SMOKE OK" <<<"$SMOKE" || { echo "ERROR: the app window did not come up"; printf '%s' "$DIAG" > "$ROOT/diag.txt"; false; }
 printf '%s' "$DIAG" > "$ROOT/diag.txt"
 
