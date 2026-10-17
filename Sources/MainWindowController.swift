@@ -164,11 +164,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         chipField.widthAnchor.constraint(greaterThanOrEqualToConstant: 300).isActive = true
         let logic = logicTestButton
         let logicID = button("Ident Logic…", #selector(identifyLogic(_:)))
-        // Two rows so Ident Logic sits under Ident EPROM and Logic Test under Chip Info.
+        let hardware = button("Hardware…", #selector(hardwareMenu(_:)))
+        // Two rows: Ident Logic under Ident EPROM, Logic Test under Chip Test, Hardware under Chip Info.
         let chipRow = NSGridView(views: [
             [bold("Chip:"), chipField, button("Search…", #selector(searchChips(_:))),
-             button("Ident EPROM…", #selector(identifyChip(_:))), button("Chip Info", #selector(chipInfo(_:))), configButton, NSView()],
-            [NSView(), NSView(), NSView(), logicID, logic, chipTestButton, NSView()],
+             button("Ident EPROM…", #selector(identifyChip(_:))), chipTestButton, button("Chip Info", #selector(chipInfo(_:))), NSView()],
+            [NSView(), NSView(), NSView(), logicID, logic, hardware, NSView()],
         ])
         chipRow.rowSpacing = 6
         chipRow.columnSpacing = 8
@@ -206,6 +207,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             c.font = small
             c.widthAnchor.constraint(equalToConstant: controlWidth).isActive = true
         }
+        configButton.controlSize = .small
+        configButton.font = small
         for l in [voltageLabel, settingsLabel] {
             l.font = small
             l.textColor = .secondaryLabelColor
@@ -220,7 +223,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         let empty = { () -> NSView in NSView() }
         // Connection and Memory share the first row; Voltages and Options line up under Connection.
         let grid = NSGridView(views: [
-            [label("Connection:"), connectionPopup, label("Memory:"), memoryPopup, empty()],
+            [label("Connection:"), connectionPopup, label("Memory:"), memoryPopup, configButton],
             [label("Voltages:"), voltButton, voltageLabel, empty(), empty()],
             [label("Options:"), settingsButton, settingsLabel, empty(), empty()],
         ])
@@ -232,6 +235,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         grid.column(at: 2).xPlacement = .trailing
         grid.column(at: 3).xPlacement = .leading
         grid.column(at: 2).leadingPadding = 12
+        grid.column(at: 4).xPlacement = .leading
         for r in 1...2 {
             grid.row(at: r).mergeCells(in: NSRange(location: 2, length: 3))
             grid.cell(atColumnIndex: 2, rowIndex: r).xPlacement = .leading
@@ -243,25 +247,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         let saveHex = button("Save…", #selector(saveFile(_:)))
         let fileRow = row([bufferLabel, spacer(),
                            button("JED…", #selector(showPLDMenu(_:))),
-                           button("Load…", #selector(openFile(_:))),
+                           button("Open…", #selector(openFile(_:))),
                            saveHex])
 
-        // Hardware… sits at the right edge under Stop and above Save…, centred between them.
-        let hardware = button("Hardware…", #selector(hardwareMenu(_:)))
-        let settingsBlock = NSView()
-        for v in [grid, hardware] as [NSView] {
-            v.translatesAutoresizingMaskIntoConstraints = false
-            settingsBlock.addSubview(v)
-        }
-        NSLayoutConstraint.activate([
-            grid.leadingAnchor.constraint(equalTo: settingsBlock.leadingAnchor),
-            grid.topAnchor.constraint(equalTo: settingsBlock.topAnchor),
-            grid.bottomAnchor.constraint(equalTo: settingsBlock.bottomAnchor),
-            grid.trailingAnchor.constraint(lessThanOrEqualTo: hardware.leadingAnchor, constant: -12),
-            hardware.trailingAnchor.constraint(equalTo: settingsBlock.trailingAnchor),
-            hardware.centerYAnchor.constraint(equalTo: settingsBlock.centerYAnchor),
-        ])
-
+        let settingsBlock = grid
         let editRow = buildEditRow()
         let bufferView = buildBufferEditor()
         bufferView.heightAnchor.constraint(greaterThanOrEqualToConstant: 300).isActive = true
@@ -299,7 +288,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             v.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -32).isActive = true
         }
         // Only now do Hardware… and Save .hex… share a superview chain, so the width link can be made.
-        hardware.widthAnchor.constraint(equalTo: saveHex.widthAnchor).isActive = true
         stack.setHuggingPriority(.defaultLow, for: .vertical)
         bufferView.setContentHuggingPriority(.defaultLow, for: .vertical)
     }
@@ -1208,7 +1196,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
 
     // MARK: Files
 
-    /// Load…: .bin, Intel HEX or S-record (detected from the name or content), .jed/.conf as text,
+    /// Open…: .bin, Intel HEX or S-record (detected from the name or content), .jed/.conf as text,
     /// with the EPROM pair tools (even/odd bytes, halves, interleaving two files, byte swap, placing at an address).
     @objc func openFile(_ sender: Any?) {
         guard let w = window, !isBusy else { return }
@@ -1658,7 +1646,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         }
         walk(content)
         print("SMOKE window visible=\(w.isVisible) frame=\(NSStringFromRect(w.frame)) content=\(NSStringFromRect(content.frame)) buttons=\(buttons.count)")
-        for t in ["Read", "Stop", "Hardware…", "Save…", "Ident EPROM…", "Ident Logic…", "Chip Info", "Logic Test", "Auto…", "Voltages…", "Settings…"] {
+        for t in ["Read", "Stop", "Hardware…", "Save…", "Open…", "Fuses & Locks…", "Chip Test…", "Ident EPROM…", "Ident Logic…", "Chip Info", "Logic Test", "Auto…", "Voltages…", "Settings…"] {
             if let r = buttons[t] { print(String(format: "SMOKE %@ x=%.0f..%.0f y=%.0f..%.0f", t, r.minX, r.maxX, r.minY, r.maxY)) }
             else { print("SMOKE missing button: \(t)") }
         }

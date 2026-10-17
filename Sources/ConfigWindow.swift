@@ -154,7 +154,10 @@ final class ConfigWindowController: NSWindowController {
         bottom.orientation = .horizontal
         status.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         status.lineBreakMode = .byTruncatingTail
-        views += [bottom, status]
+        // These act on every section at once, so a separator line sets them apart like a section.
+        let bottomSeparator = NSBox()
+        bottomSeparator.boxType = .separator
+        views += [bottomSeparator, bottom, status]
 
         let stack = NSStackView(views: views)
         stack.orientation = .vertical

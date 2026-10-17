@@ -63,7 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let fileItem = NSMenuItem(); main.addItem(fileItem)
         let fileMenu = NSMenu(title: "File")
-        fileMenu.addItem(withTitle: "Load…", action: #selector(MainWindowController.openFile(_:)), keyEquivalent: "o")
+        fileMenu.addItem(withTitle: "Open…", action: #selector(MainWindowController.openFile(_:)), keyEquivalent: "o")
         fileMenu.addItem(withTitle: "Save…", action: #selector(MainWindowController.saveFile(_:)), keyEquivalent: "s")
         fileMenu.addItem(.separator())
         fileMenu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
