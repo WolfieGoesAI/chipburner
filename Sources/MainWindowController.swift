@@ -191,7 +191,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         let autoBurn = button("Auto…", #selector(autoBurn(_:)))
         stopButton = button("Stop", #selector(stop(_:)))
         actionButtons = [read, blank, program, verify, erase, autoBurn, logic, logicID]
-        let actionRow = row([read, blank, program, verify, erase, autoBurn, spacer(), stopButton])
+        let jedButton = button("JED…", #selector(showPLDMenu(_:)))
+        let openButton = button("Open…", #selector(openFile(_:)))
+        let saveHex = button("Save…", #selector(saveFile(_:)))
+        // Stop follows Auto…; the file buttons sit at the right end of the same row.
+        let actionRow = row([read, blank, program, verify, erase, autoBurn, stopButton, spacer(), jedButton, openButton, saveHex])
 
         memoryTypes.forEach { memoryPopup.addItem(withTitle: $0.title) }
         ["ZIF socket", "ICSP – power from programmer", "ICSP – board has its own power"].forEach { connectionPopup.addItem(withTitle: $0) }
@@ -248,11 +252,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
 
         bufferLabel.lineBreakMode = .byTruncatingMiddle
         bufferLabel.isSelectable = true
-        let saveHex = button("Save…", #selector(saveFile(_:)))
-        let fileRow = row([bufferLabel, spacer(),
-                           button("JED…", #selector(showPLDMenu(_:))),
-                           button("Open…", #selector(openFile(_:))),
-                           saveHex])
+        let fileRow = row([bufferLabel, spacer()])
 
         let settingsBlock = grid
         let editRow = buildEditRow()
