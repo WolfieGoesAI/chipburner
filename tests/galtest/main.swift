@@ -192,7 +192,66 @@ for chip in [GalAssembler.Chip.gal16v8, .gal20v8, .gal22v10, .gal20ra10] {
         else { asmFailed += 1; print("FAIL template \(chip.rawValue): decoded as \(d.chip.rawValue) with \(d.outputs.count) outputs") }
     } catch { asmFailed += 1; print("FAIL template \(chip.rawValue): \(error)") }
 }
+// GAL functional test vectors: every H/L/Z the generator expects must agree with the PLD source's
+// own equations (evaluated independently of the decoder) for the combinatorial test cases.
+var vecPassed = 0, vecFailed = 0
+for pld in files.filter({ $0.hasSuffix(".pld") }).sorted() {
+    let base = String(pld.dropLast(4))
+    guard let src = try? String(contentsOf: dir.appendingPathComponent(pld)),
+          let jedText = try? String(contentsOf: dir.appendingPathComponent(base + ".jed")),
+          let p = parsePLD(src), let d = try? GalDecoder.decode(try JEDECFile.parse(jedText)) else { continue }
+    let g = GalTestGenerator.generate(d)
+    var problems = g.test.problems()
+    let registered = p.eqns.values.contains { $0.kind == .registered }
+    if registered && p.chip != "GAL20RA10" {
+        if !g.test.vectors.allSatisfy({ $0[0] == "C" }) { problems.append("registered design without clock pulses on pin 1") }
+        if g.checkedOutputs.isEmpty { problems.append("no registered output ever becomes known") }
+    }
+    var checks = 0
+    for v in g.test.vectors where !registered {
+        func pinValue(_ pin: Int) -> Bool? {
+            switch v[pin - 1] { case "0", "L": return false; case "1", "H": return true; default: return nil }
+        }
+        func evalSum(_ s: GalSum) -> Bool? {
+            if s.isTrue { return true }
+            var any = false
+            for row in s.rows {
+                var r = true
+                for l in row { guard let x = pinValue(l.pin) else { return nil }; r = r && (l.negated ? !x : x) }
+                any = any || r
+            }
+            return any
+        }
+        for (pin, e) in p.eqns {
+            guard let t = e.term else { continue }
+            let ch = v[pin - 1]
+            if let en = e.enable, let env = evalSum(en), !env {
+                if ch != "Z" && ch != "X" { problems.append("pin \(pin) expected Z, vector has \(ch)") }
+                checks += 1; continue
+            }
+            guard ch == "H" || ch == "L", let tv = evalSum(t) else { continue }
+            let want: Character = (e.activeHigh ? tv : !tv) ? "H" : "L"
+            if ch != want { problems.append("pin \(pin): vector has \(ch), the source gives \(want)"); break }
+            checks += 1
+        }
+    }
+    if !registered && checks == 0 { problems.append("no output was checked") }
+    if problems.isEmpty { vecPassed += 1; print("ok   GAL test vectors \(base): \(g.test.vectors.count) vectors, \(checks) output checks against the source") }
+    else { vecFailed += 1; print("FAIL GAL test vectors \(base): " + problems.prefix(4).joined(separator: "; ")) }
+}
+// Vector file round trip and minipro result parsing.
+let lt = LogicTest(name: "My 7400", pins: 14, voltage: "5V", vectors: [Array("00H00HGH00H00V"), Array("11L11LGL11L11V")])
+let back = LogicTest.parseXML(lt.xml())
+if back?.vectors == lt.vectors && back?.pins == 14 && back?.name == "MY_7400" && lt.problems().isEmpty { vecPassed += 1; print("ok   logicic.xml round trip") }
+else { vecFailed += 1; print("FAIL logicic.xml round trip") }
+let sample = "      1  2  3  \n0000: 0  0  H  \n0001: 1  1  L- \nLogic test failed: 1 errors encountered."
+let pr = LogicTest.parseResult(sample)
+if pr.failingVectors == [1] && pr.errors == 1 && !pr.passed { vecPassed += 1; print("ok   logic test result parsing") }
+else { vecFailed += 1; print("FAIL logic test result parsing: \(pr.failingVectors) \(pr.errors)") }
+if !LogicTest(name: "x", pins: 14, voltage: "5V", vectors: [Array("00H00H0H00H00V")]).problems().isEmpty { vecPassed += 1; print("ok   a vector without ground is rejected") }
+else { vecFailed += 1; print("FAIL a vector without ground was accepted") }
+print("galtest vectors: \(vecPassed) passed, \(vecFailed) failed")
 print("galtest assemble: \(asmPassed) passed, \(asmFailed) failed; errors: \(errPassed) passed, \(errFailed) failed")
-let allOK = failed == 0 && passed > 0 && asmFailed == 0 && asmPassed > 0 && errFailed == 0 && errPassed > 0
+let allOK = failed == 0 && passed > 0 && asmFailed == 0 && asmPassed > 0 && errFailed == 0 && errPassed > 0 && vecFailed == 0 && vecPassed > 0
 print(allOK ? "GALTEST OK" : "GALTEST FAILED")
 exit(allOK ? 0 : 1)

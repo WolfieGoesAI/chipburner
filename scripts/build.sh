@@ -219,7 +219,7 @@ NOTE="${DBT//'%'/'%25'}"; NOTE="${NOTE//$'\n'/'%0A'}"
 echo "::notice title=Database reader test::$NOTE"
 
 log "Test: JED decoder against Galette's assembled test cases"
-xcrun swiftc -O -sdk "$SDK" "$ROOT/Sources/GalDecoder.swift" "$ROOT/Sources/GalAssembler.swift" "$ROOT/tests/galtest/main.swift" -o "$WORK/galtest"
+xcrun swiftc -O -sdk "$SDK" "$ROOT/Sources/GalDecoder.swift" "$ROOT/Sources/GalAssembler.swift" "$ROOT/Sources/LogicVectors.swift" "$ROOT/tests/galtest/main.swift" -o "$WORK/galtest"
 GT="$("$WORK/galtest" "$ROOT/tests/gal/cases" 2>&1)" || { echo "$GT"; printf '### galtest\n%s\n' "$(grep -v '^ok ' <<<"$GT" | grep -v '^;' | head -150)" > "$ROOT/diag.txt"; false; }
 echo "$GT"
 note "JED decoder test" "$(grep -v '^;' <<<"$GT" | tail -40)"
@@ -229,19 +229,6 @@ DIAG=""
 diag() { DIAG+="### $1"$'\n'"$2"$'\n\n'; }
 diag "minipro source" "$MINIPRO_DESC"$'\n'"$("$APP/Contents/MacOS/minipro" --version 2>&1 | head -5)"
 diag "Test-related chip types" "$(grep -E '^(SRAM|DRAMLOGIC|LOGICNAMES|TL866A entries)' <<<"$DBT")"
-SRC="$WORK/src/minipro-git/src"
-LX="$APP/Contents/Resources/minipro/logicic.xml"
-diag "man: logic test" "$(grep -n -i -B2 -A25 'logic ic test\|LOGIC IC' <<<"$MANTXT" | head -80)"
-diag "logic test code (main.c)" "$(grep -n -i -E "logic|vector" "$SRC/main.c" | head -60 | cut -c1-200)"
-LF="$(grep -l -E "logic_ic_test|logic_test" "$SRC"/*.c | head -5)"
-diag "logic test files" "$LF"
-for f in $LF; do diag "vector chars in $(basename "$f")" "$(grep -n -E "case '[0-9A-Za-z]'|'[CZXHLGV]'" "$f" | head -50 | cut -c1-200)"; done
-diag "logic test implementation" "$(sed -n '/int tl866a_logic_ic_test/,/^}/p' "$SRC/tl866a.c" | head -160)"
-diag "minipro logic_ic_test" "$(grep -n -A60 '^int minipro_logic_ic_test\|^static int logic_ic_test\|^int logic_ic_test' "$SRC"/*.c | head -140 | cut -c1-200)"
-diag "logicic header and 7474" "$(head -40 "$LX"; grep -n -A12 'name="7474' "$LX" | head -16)"
-diag "logicic 74125 (tri-state)" "$(grep -n -A12 'name="[^"]*74125' "$LX" | head -16)"
-diag "logicic 7493 (counter)" "$(grep -n -A20 'name="[^"]*7493' "$LX" | head -24)"
-diag "logicic 24-pin example" "$(grep -n -B1 -A6 'pins="24"' "$LX" | head -12)"
 diag "Fuses & Locks families" "$(grep -E '^(FL|FUSES)' <<<"$DBT")"
 printf '%s' "$DIAG" > "$ROOT/diag.txt"
 

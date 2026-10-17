@@ -1,121 +1,116 @@
 import Cocoa
 
-/// Editable hex grid: 16 bytes per row, click a byte (or press Return on a selected row) and type
-/// one or two hex digits. Return or Tab moves on to the next byte. Undo/Redo work from the Edit menu.
-final class HexEditorView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate {
+/// Hex editor: address, 16 hex bytes and ASCII per row.
+/// Click to place the cursor, drag (or Shift-click / Shift-arrows) to select a range, type hex digits
+/// in the hex column or characters in the ASCII column (Tab switches). Copy/Cut/Paste work on bytes;
+/// Paste overwrites, Paste Inserting inserts; Delete/Backspace remove bytes. Undo/Redo via the Edit menu.
+final class HexEditorView: NSView {
     private(set) var buffer = EditableBuffer()
-    /// Called after every change to the bytes (edit, fill, undo …).
+    /// Called after every change to the bytes.
     var onChange: (() -> Void)?
-    /// Bytes to tint, e.g. the last search hit or the go-to address.
+    /// Called when the cursor or selection moves (for the status text).
+    var onSelectionChange: (() -> Void)?
+
+    /// Bytes tinted as a search hit / go-to target.
     private(set) var highlight: Range<Int>?
     /// Where Find Next continues from.
-    var cursor = 0
+    var cursor: Int {
+        get { grid.cursor }
+        set { grid.cursor = max(0, min(newValue, max(0, buffer.count - 1))); grid.anchor = grid.cursor; grid.needsDisplay = true }
+    }
 
-    private let table = NSTableView()
+    fileprivate let grid = HexGridView()
+    private let header = HexHeaderView()
     private let scroll = NSScrollView()
-    private let font = NSFont.userFixedPitchFont(ofSize: 12) ?? .systemFont(ofSize: 12)
-    private let perRow = 16
-    private var addrDigits = 4
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        build()
-    }
-
-    required init?(coder: NSCoder) { fatalError("not used") }
-
-    private func build() {
-        table.dataSource = self
-        table.delegate = self
-        table.rowHeight = 18
-        table.intercellSpacing = NSSize(width: 0, height: 0)
-        table.usesAlternatingRowBackgroundColors = true
-        table.allowsColumnReordering = false
-        table.allowsColumnResizing = false
-        table.allowsMultipleSelection = false
-        table.columnAutoresizingStyle = .noColumnAutoresizing
-        table.gridStyleMask = []
-        table.target = self
-        table.doubleAction = #selector(doubleClicked(_:))
-        rebuildColumns()
-
-        scroll.documentView = table
+        grid.owner = self
+        header.grid = grid
+        scroll.documentView = grid
         scroll.hasVerticalScroller = true
-        scroll.hasHorizontalScroller = true
+        scroll.hasHorizontalScroller = false
         scroll.borderType = .bezelBorder
-        scroll.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(scroll)
+        scroll.drawsBackground = true
+        scroll.backgroundColor = .textBackgroundColor
+        for v in [header, scroll] as [NSView] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(v)
+        }
         NSLayoutConstraint.activate([
+            header.leadingAnchor.constraint(equalTo: leadingAnchor),
+            header.trailingAnchor.constraint(equalTo: trailingAnchor),
+            header.topAnchor.constraint(equalTo: topAnchor),
+            header.heightAnchor.constraint(equalToConstant: grid.rowH + 4),
             scroll.leadingAnchor.constraint(equalTo: leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: trailingAnchor),
-            scroll.topAnchor.constraint(equalTo: topAnchor),
+            scroll.topAnchor.constraint(equalTo: header.bottomAnchor),
             scroll.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
     }
 
-    private func rebuildColumns() {
-        for c in table.tableColumns { table.removeTableColumn(c) }
-        let charW = ("0" as NSString).size(withAttributes: [.font: font]).width
-        func add(_ id: String, _ title: String, _ width: CGFloat) {
-            let c = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id))
-            c.title = title
-            c.width = width
-            c.minWidth = width
-            c.headerCell.font = font
-            c.headerCell.alignment = id == "ascii" || id == "addr" ? .left : .center
-            table.addTableColumn(c)
-        }
-        add("addr", "Address", charW * CGFloat(addrDigits) + 22)
-        for i in 0..<perRow { add("b\(i)", String(format: "%02X", i), charW * 2 + (i % 8 == 7 ? 16 : 10)) }
-        add("ascii", "ASCII", charW * CGFloat(perRow) + 16)
-    }
+    required init?(coder: NSCoder) { fatalError("not used") }
 
     // MARK: Data
 
     func setData(_ data: Data) {
         buffer = EditableBuffer(data)
         highlight = nil
-        cursor = 0
-        let digits = BufferOps.addressDigits(for: data.count)
-        if digits != addrDigits { addrDigits = digits; rebuildColumns() }
-        table.reloadData()
-        table.scrollRowToVisible(0)
+        grid.cursor = 0; grid.anchor = 0; grid.selection = nil; grid.nibble = 0
+        grid.relayout()
+        grid.scroll(.zero)
+        header.needsDisplay = true
+        onSelectionChange?()
     }
 
     var data: Data { buffer.data }
 
-    /// Applies a change made through `mutate` and refreshes the view.
+    /// The selected bytes, if any.
+    var selection: Range<Int>? { grid.selection }
+
+    /// Applies a change through `mutate` and refreshes the view.
     func edit(_ mutate: (inout EditableBuffer) -> Range<Int>?) {
         let before = buffer.count
         let changed = mutate(&buffer)
-        if buffer.count != before {
-            let digits = BufferOps.addressDigits(for: buffer.count)
-            if digits != addrDigits { addrDigits = digits; rebuildColumns() }
-            table.reloadData()
-        } else if let r = changed, !r.isEmpty {
-            let rows = IndexSet(integersIn: (r.lowerBound / perRow)...((r.upperBound - 1) / perRow))
-            table.reloadData(forRowIndexes: rows, columnIndexes: IndexSet(integersIn: 0..<table.numberOfColumns))
-        }
+        if buffer.count != before { grid.relayout(); header.needsDisplay = true }
+        grid.clampCursor()
+        grid.needsDisplay = true
         if let r = changed, !r.isEmpty { show(r) }
         onChange?()
+        onSelectionChange?()
     }
 
     /// Scrolls to and tints a range of bytes.
     func show(_ r: Range<Int>) {
-        let old = highlight
         highlight = r
-        var rows = IndexSet()
-        for x in [old, r].compactMap({ $0 }) where !x.isEmpty && x.lowerBound < max(buffer.count, 1) {
-            rows.insert(integersIn: (x.lowerBound / perRow)...(max(x.lowerBound, x.upperBound - 1) / perRow))
-        }
-        let maxRow = table.numberOfRows - 1
-        rows = rows.filteredIndexSet { $0 <= maxRow }
-        table.reloadData(forRowIndexes: rows, columnIndexes: IndexSet(integersIn: 0..<table.numberOfColumns))
-        let row = r.lowerBound / perRow
-        if row <= maxRow {
-            table.scrollRowToVisible(min(maxRow, row + 3))
-            table.scrollRowToVisible(row)
-        }
+        grid.scrollToByte(r.lowerBound)
+        grid.needsDisplay = true
+    }
+
+    /// Selects a range and moves the cursor to its start.
+    func select(_ r: Range<Int>) {
+        grid.selection = r.isEmpty ? nil : r
+        grid.anchor = r.lowerBound
+        grid.cursor = max(0, min(r.lowerBound, max(0, buffer.count - 1)))
+        grid.scrollToByte(r.lowerBound)
+        grid.needsDisplay = true
+        onSelectionChange?()
+    }
+
+    /// The selection start, or the cursor – the natural starting point for dialogs.
+    var selectedAddress: Int { grid.selection?.lowerBound ?? grid.cursor }
+
+    func focus() { window?.makeFirstResponder(grid) }
+
+    /// Inserts bytes at the cursor (replacing the selection, if any).
+    func insert(_ bytes: Data) {
+        let r = grid.selection ?? grid.cursor..<grid.cursor
+        let at = min(r.lowerBound, buffer.count)
+        edit { $0.replace(at..<min(r.upperBound, $0.count), with: bytes) }
+        grid.selection = bytes.isEmpty ? nil : at..<(at + bytes.count)
+        grid.cursor = min(at, max(0, buffer.count - 1)); grid.anchor = grid.cursor
+        grid.needsDisplay = true
+        onSelectionChange?()
     }
 
     // MARK: Undo
@@ -128,100 +123,361 @@ final class HexEditorView: NSView, NSTableViewDataSource, NSTableViewDelegate, N
         if item.action == #selector(redo(_:)) { return buffer.canRedo }
         return true
     }
+}
 
-    // MARK: Table
-
-    func numberOfRows(in tableView: NSTableView) -> Int { (buffer.count + perRow - 1) / perRow }
-
-    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        guard let id = tableColumn?.identifier.rawValue else { return nil }
-        let field: NSTextField
-        if let reused = tableView.makeView(withIdentifier: NSUserInterfaceItemIdentifier(id), owner: self) as? NSTextField {
-            field = reused
-        } else {
-            field = NSTextField()
-            field.identifier = NSUserInterfaceItemIdentifier(id)
-            field.isBordered = false
-            field.font = font
-            field.lineBreakMode = .byClipping
-            field.cell?.usesSingleLineMode = true
-            field.alignment = id.hasPrefix("b") ? .center : .left
-            field.delegate = self
+/// Column titles above the grid.
+private final class HexHeaderView: NSView {
+    weak var grid: HexGridView?
+    override var isFlipped: Bool { true }
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.windowBackgroundColor.setFill()
+        bounds.fill()
+        guard let g = grid else { return }
+        let attrs: [NSAttributedString.Key: Any] = [.font: g.font, .foregroundColor: NSColor.secondaryLabelColor]
+        ("Address" as NSString).draw(at: NSPoint(x: g.addrX + 2, y: 2), withAttributes: attrs)
+        for i in 0..<16 {
+            (String(format: "%02X", i) as NSString).draw(at: NSPoint(x: g.hexX(i) + 2, y: 2), withAttributes: attrs)
         }
-        let base = row * perRow
-        field.drawsBackground = false
-        field.textColor = .textColor
-        switch id {
-        case "addr":
-            field.isEditable = false
-            field.stringValue = String(format: "%0\(addrDigits)X", base)
-            field.textColor = .secondaryLabelColor
-        case "ascii":
-            field.isEditable = false
-            var s = ""
-            for i in base..<min(base + perRow, buffer.count) {
-                let b = buffer[i]
-                s.append(b >= 0x20 && b < 0x7F ? Character(UnicodeScalar(b)) : "·")
-            }
-            field.stringValue = s
-            field.textColor = .secondaryLabelColor
-        default:
-            let i = base + (Int(id.dropFirst()) ?? 0)
-            field.tag = i
-            if i < buffer.count {
-                field.isEditable = true
-                field.stringValue = String(format: "%02X", buffer[i])
-                if let h = highlight, h.contains(i) {
-                    field.drawsBackground = true
-                    field.backgroundColor = NSColor.selectedTextBackgroundColor
+        ("ASCII" as NSString).draw(at: NSPoint(x: g.asciiX + 2, y: 2), withAttributes: attrs)
+        NSColor.separatorColor.setFill()
+        NSRect(x: 0, y: bounds.height - 1, width: bounds.width, height: 1).fill()
+    }
+}
+
+/// The grid itself: drawing, mouse selection and keyboard editing.
+fileprivate final class HexGridView: NSView {
+    weak var owner: HexEditorView?
+    let font = NSFont.userFixedPitchFont(ofSize: 12) ?? .systemFont(ofSize: 12)
+    let rowH: CGFloat = 18
+    lazy var charW: CGFloat = ("0" as NSString).size(withAttributes: [.font: font]).width
+
+    var cursor = 0
+    var anchor = 0
+    var selection: Range<Int>?
+    var nibble = 0                 // 0 = next hex digit is the high nibble
+    var asciiPane = false
+    private static let hexStrings: [NSString] = (0..<256).map { String(format: "%02X", $0) as NSString }
+
+    override var isFlipped: Bool { true }
+    override var acceptsFirstResponder: Bool { true }
+    override func becomeFirstResponder() -> Bool { needsDisplay = true; return true }
+    override func resignFirstResponder() -> Bool { needsDisplay = true; return true }
+
+    private var count: Int { owner?.buffer.count ?? 0 }
+    private var rows: Int { (count + 15) / 16 }
+    private var digits: Int { BufferOps.addressDigits(for: count) }
+
+    let addrX: CGFloat = 8
+    var hexStart: CGFloat { addrX + CGFloat(digits + 2) * charW }
+    func hexX(_ i: Int) -> CGFloat { hexStart + CGFloat(i * 3) * charW + (i >= 8 ? charW : 0) }
+    var asciiX: CGFloat { hexX(15) + 4 * charW }
+
+    func relayout() {
+        let width = asciiX + 16 * charW + 16
+        setFrameSize(NSSize(width: max(width, superview?.bounds.width ?? width), height: max(CGFloat(max(rows, 1)) * rowH, superview?.bounds.height ?? 0)))
+        needsDisplay = true
+    }
+
+    func clampCursor() {
+        cursor = max(0, min(cursor, max(0, count - 1)))
+        anchor = max(0, min(anchor, max(0, count - 1)))
+        if let s = selection {
+            let c = s.clamped(to: 0..<count)
+            selection = c.isEmpty ? nil : c
+        }
+    }
+
+    func scrollToByte(_ i: Int) {
+        let r = NSRect(x: 0, y: CGFloat(i / 16) * rowH - rowH * 2, width: 10, height: rowH * 5)
+        scrollToVisible(r)
+    }
+
+    // MARK: Drawing
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.textBackgroundColor.setFill()
+        dirtyRect.fill()
+        guard let owner = owner, count > 0 else {
+            let s = "Empty buffer – open a file, read a chip or use New…" as NSString
+            s.draw(at: NSPoint(x: 12, y: 8), withAttributes: [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.secondaryLabelColor])
+            return
+        }
+        let buf = owner.buffer
+        let first = max(0, Int(dirtyRect.minY / rowH)), last = min(rows - 1, Int(dirtyRect.maxY / rowH))
+        guard first <= last else { return }
+        let textAttrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.textColor]
+        let dimAttrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.secondaryLabelColor]
+        let focused = window?.firstResponder === self
+        let selColor = focused ? NSColor.selectedTextBackgroundColor : NSColor.unemphasizedSelectedTextBackgroundColor
+        let hiColor = NSColor.findHighlightColor.withAlphaComponent(0.6)
+        let alt = NSColor.controlAlternatingRowBackgroundColors.count > 1 ? NSColor.controlAlternatingRowBackgroundColors[1] : NSColor.textBackgroundColor
+        for row in first...last {
+            let y = CGFloat(row) * rowH
+            if row % 2 == 1 { alt.setFill(); NSRect(x: dirtyRect.minX, y: y, width: dirtyRect.width, height: rowH).fill() }
+            (String(format: "%0\(digits)X", row * 16) as NSString).draw(at: NSPoint(x: addrX, y: y + 1), withAttributes: dimAttrs)
+            var ascii = ""
+            for i in 0..<16 {
+                let idx = row * 16 + i
+                guard idx < count else { break }
+                let v = buf[idx]
+                let hexRect = NSRect(x: hexX(i) - 2, y: y, width: charW * 2 + 4, height: rowH)
+                let ascRect = NSRect(x: asciiX + CGFloat(i) * charW, y: y, width: charW, height: rowH)
+                if let s = selection, s.contains(idx) {
+                    selColor.setFill(); hexRect.fill(); ascRect.fill()
+                } else if let h = owner.highlight, h.contains(idx) {
+                    hiColor.setFill(); hexRect.fill(); ascRect.fill()
                 }
-            } else {
-                field.isEditable = false
-                field.stringValue = ""
+                if idx == cursor {
+                    let active = asciiPane ? ascRect : hexRect
+                    let other = asciiPane ? hexRect : ascRect
+                    (focused ? NSColor.keyboardFocusIndicatorColor : NSColor.secondaryLabelColor).withAlphaComponent(0.35).setFill()
+                    active.fill()
+                    NSColor.secondaryLabelColor.withAlphaComponent(0.6).setStroke()
+                    NSBezierPath(rect: other.insetBy(dx: 0.5, dy: 0.5)).stroke()
+                    if !asciiPane && nibble == 1 && focused {
+                        NSColor.keyboardFocusIndicatorColor.setFill()
+                        NSRect(x: hexX(i) + charW, y: y + rowH - 3, width: charW, height: 2).fill()
+                    }
+                }
+                Self.hexStrings[Int(v)].draw(at: NSPoint(x: hexX(i), y: y + 1), withAttributes: textAttrs)
+                ascii.append(v >= 0x20 && v < 0x7F ? Character(UnicodeScalar(v)) : "·")
             }
+            (ascii as NSString).draw(at: NSPoint(x: asciiX, y: y + 1), withAttributes: dimAttrs)
         }
-        return field
     }
 
-    @objc private func doubleClicked(_ sender: Any?) {
-        let row = table.clickedRow, col = table.clickedColumn
-        guard row >= 0, col >= 1, col <= perRow else { return }
-        table.editColumn(col, row: row, with: nil, select: true)
+    // MARK: Mouse
+
+    private func hit(_ p: NSPoint) -> (index: Int, ascii: Bool, nibble: Int) {
+        let row = max(0, Int(p.y / rowH))
+        if p.x >= asciiX - charW / 2 {
+            let i = max(0, min(15, Int((p.x - asciiX) / charW)))
+            return (min(row * 16 + i, max(0, count - 1)), true, 0)
+        }
+        var col = 0, nib = 0
+        for i in 0..<16 {
+            if p.x >= hexX(i) - charW / 2 { col = i; nib = p.x >= hexX(i) + charW ? 1 : 0 }
+        }
+        return (min(row * 16 + col, max(0, count - 1)), false, nib)
     }
 
-    func controlTextDidEndEditing(_ obj: Notification) {
-        guard let field = obj.object as? NSTextField, let id = field.identifier?.rawValue, id.hasPrefix("b") else { return }
-        let i = field.tag
-        guard i < buffer.count else { return }
-        var t = field.stringValue.trimmingCharacters(in: .whitespaces)
-        if t.lowercased().hasPrefix("0x") { t.removeFirst(2) }
-        if let v = UInt8(t, radix: 16), t.count <= 2 {
-            if v != buffer[i] { edit { $0.replace(i..<(i + 1), with: Data([v])) } }
-            cursor = i + 1
+    override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
+        guard count > 0 else { return }
+        let h = hit(convert(event.locationInWindow, from: nil))
+        asciiPane = h.ascii
+        if event.modifierFlags.contains(.shift) {
+            extend(to: h.index)
+        } else if event.clickCount == 2 {
+            selection = h.index..<(h.index + 1); cursor = h.index; anchor = h.index
         } else {
-            NSSound.beep()
+            cursor = h.index; anchor = h.index; selection = nil; nibble = 0
         }
-        field.stringValue = String(format: "%02X", buffer[i])
-        // Return/Tab moves on to the next byte, Shift-Tab back.
-        let movement = (obj.userInfo?["NSTextMovement"] as? Int) ?? 0
-        let next: Int?
-        switch movement {
-        case NSTextMovement.return.rawValue, NSTextMovement.tab.rawValue: next = i + 1 < buffer.count ? i + 1 : nil
-        case NSTextMovement.backtab.rawValue: next = i > 0 ? i - 1 : nil
-        default: next = nil
-        }
-        if let n = next {
-            DispatchQueue.main.async {
-                let row = n / self.perRow
-                self.table.scrollRowToVisible(row)
-                self.table.editColumn(1 + n % self.perRow, row: row, with: nil, select: true)
+        needsDisplay = true
+        owner?.onSelectionChange?()
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard count > 0 else { return }
+        autoscroll(with: event)
+        let h = hit(convert(event.locationInWindow, from: nil))
+        extend(to: h.index)
+        needsDisplay = true
+        owner?.onSelectionChange?()
+    }
+
+    private func extend(to i: Int) {
+        selection = min(anchor, i)..<(max(anchor, i) + 1)
+        cursor = i
+        nibble = 0
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let m = NSMenu()
+        m.addItem(withTitle: "Cut", action: #selector(cut(_:)), keyEquivalent: "")
+        m.addItem(withTitle: "Copy", action: #selector(copy(_:)), keyEquivalent: "")
+        m.addItem(withTitle: "Copy as Hex Text", action: #selector(copyAsHex(_:)), keyEquivalent: "")
+        m.addItem(withTitle: "Paste (overwrite)", action: #selector(paste(_:)), keyEquivalent: "")
+        m.addItem(withTitle: "Paste Inserting", action: #selector(pasteInserting(_:)), keyEquivalent: "")
+        m.addItem(withTitle: "Delete Bytes", action: #selector(delete(_:)), keyEquivalent: "")
+        m.addItem(.separator())
+        m.addItem(withTitle: "Insert Bytes…", action: #selector(MainWindowController.insertBytes(_:)), keyEquivalent: "")
+        m.addItem(withTitle: "Fill…", action: #selector(MainWindowController.fillBufferRange(_:)), keyEquivalent: "")
+        m.addItem(withTitle: "Checksum…", action: #selector(MainWindowController.checksumBufferRange(_:)), keyEquivalent: "")
+        m.addItem(.separator())
+        m.addItem(withTitle: "Select All", action: #selector(selectAll(_:)), keyEquivalent: "")
+        return m
+    }
+
+    // MARK: Keyboard
+
+    override func keyDown(with event: NSEvent) { interpretKeyEvents([event]) }
+
+    private func moveCursor(to i: Int, extending: Bool) {
+        guard count > 0 else { return }
+        let n = max(0, min(i, count - 1))
+        if extending { extend(to: n) } else { cursor = n; anchor = n; selection = nil; nibble = 0 }
+        scrollToByte(cursor)
+        needsDisplay = true
+        owner?.onSelectionChange?()
+    }
+
+    private var pageRows: Int { max(1, Int((enclosingScrollView?.contentView.bounds.height ?? 300) / rowH) - 1) }
+
+    override func moveLeft(_ sender: Any?) { moveCursor(to: cursor - 1, extending: false) }
+    override func moveRight(_ sender: Any?) { moveCursor(to: cursor + 1, extending: false) }
+    override func moveUp(_ sender: Any?) { moveCursor(to: cursor - 16, extending: false) }
+    override func moveDown(_ sender: Any?) { moveCursor(to: cursor + 16, extending: false) }
+    override func moveLeftAndModifySelection(_ sender: Any?) { moveCursor(to: cursor - 1, extending: true) }
+    override func moveRightAndModifySelection(_ sender: Any?) { moveCursor(to: cursor + 1, extending: true) }
+    override func moveUpAndModifySelection(_ sender: Any?) { moveCursor(to: cursor - 16, extending: true) }
+    override func moveDownAndModifySelection(_ sender: Any?) { moveCursor(to: cursor + 16, extending: true) }
+    override func moveToBeginningOfLine(_ sender: Any?) { moveCursor(to: cursor - cursor % 16, extending: false) }
+    override func moveToEndOfLine(_ sender: Any?) { moveCursor(to: cursor - cursor % 16 + 15, extending: false) }
+    override func moveToBeginningOfDocument(_ sender: Any?) { moveCursor(to: 0, extending: false) }
+    override func moveToEndOfDocument(_ sender: Any?) { moveCursor(to: count - 1, extending: false) }
+    override func moveToBeginningOfDocumentAndModifySelection(_ sender: Any?) { moveCursor(to: 0, extending: true) }
+    override func moveToEndOfDocumentAndModifySelection(_ sender: Any?) { moveCursor(to: count - 1, extending: true) }
+    override func pageDown(_ sender: Any?) { moveCursor(to: cursor + 16 * pageRows, extending: false) }
+    override func pageUp(_ sender: Any?) { moveCursor(to: cursor - 16 * pageRows, extending: false) }
+    override func scrollPageDown(_ sender: Any?) { pageDown(sender) }
+    override func scrollPageUp(_ sender: Any?) { pageUp(sender) }
+    override func insertTab(_ sender: Any?) { asciiPane.toggle(); nibble = 0; needsDisplay = true }
+    override func insertBacktab(_ sender: Any?) { insertTab(sender) }
+    override func cancelOperation(_ sender: Any?) { selection = nil; nibble = 0; needsDisplay = true; owner?.onSelectionChange?() }
+
+    override func insertText(_ insertString: Any) {
+        guard let owner = owner, count > 0 else { NSSound.beep(); return }
+        let s = (insertString as? String) ?? (insertString as? NSAttributedString)?.string ?? ""
+        if let sel = selection { cursor = sel.lowerBound; anchor = cursor; selection = nil; nibble = 0 }
+        for ch in s {
+            guard cursor < count else { NSSound.beep(); break }
+            if asciiPane {
+                guard let a = ch.asciiValue else { NSSound.beep(); continue }
+                let at = cursor
+                owner.edit { $0.replace(at..<(at + 1), with: Data([a])) }
+                cursor = min(cursor + 1, count - 1)
+                if at == count - 1 { break }
+            } else {
+                guard let d = ch.hexDigitValue else { NSSound.beep(); continue }
+                let at = cursor
+                let old = owner.buffer[at]
+                let new = nibble == 0 ? UInt8(d << 4) | (old & 0x0F) : (old & 0xF0) | UInt8(d)
+                owner.edit { $0.replace(at..<(at + 1), with: Data([new])) }
+                if nibble == 0 { nibble = 1 } else { nibble = 0; if cursor < count - 1 { cursor += 1 } }
             }
+        }
+        anchor = cursor
+        scrollToByte(cursor)
+        needsDisplay = true
+        owner.onSelectionChange?()
+    }
+
+    override func deleteBackward(_ sender: Any?) {
+        guard let owner = owner, count > 0 else { return }
+        if let s = selection { removeBytes(s); return }
+        guard cursor > 0 else { NSSound.beep(); return }
+        let at = cursor - 1
+        owner.edit { $0.replace(at..<(at + 1), with: Data()); return nil }
+        moveCursor(to: at, extending: false)
+    }
+
+    override func deleteForward(_ sender: Any?) {
+        guard count > 0 else { return }
+        removeBytes(selection ?? cursor..<(cursor + 1))
+    }
+
+    private func removeBytes(_ r: Range<Int>) {
+        guard let owner = owner else { return }
+        owner.edit { $0.replace(r, with: Data()); return nil }
+        selection = nil
+        moveCursor(to: r.lowerBound, extending: false)
+    }
+
+    // MARK: Pasteboard
+
+    static let bytesType = NSPasteboard.PasteboardType("se.chipburner.bytes")
+
+    private var copyRange: Range<Int>? { selection ?? (count > 0 ? cursor..<(cursor + 1) : nil) }
+
+    @objc func copy(_ sender: Any?) {
+        guard let owner = owner, let r = copyRange else { return }
+        let bytes = owner.buffer.data.subdata(in: r)
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.declareTypes([Self.bytesType, .string], owner: nil)
+        pb.setData(bytes, forType: Self.bytesType)
+        if asciiPane {
+            pb.setString(String(bytes.map { $0 >= 0x20 && $0 < 0x7F ? Character(UnicodeScalar($0)) : "." }), forType: .string)
+        } else {
+            pb.setString(bytes.map { String(format: "%02X", $0) }.joined(separator: " "), forType: .string)
         }
     }
 
-    /// The first byte of the selected row (or the cursor), as a starting point for dialogs.
-    var selectedAddress: Int {
-        if let h = highlight { return h.lowerBound }
-        return table.selectedRow >= 0 ? table.selectedRow * perRow : 0
+    @objc func copyAsHex(_ sender: Any?) {
+        let was = asciiPane
+        asciiPane = false
+        copy(sender)
+        asciiPane = was
+    }
+
+    @objc func cut(_ sender: Any?) {
+        guard let r = copyRange else { return }
+        copy(sender)
+        removeBytes(r)
+    }
+
+    /// Bytes on the pasteboard: ChipBurner's own bytes, hex text ("AA 55 …") or plain text.
+    private func pasteboardBytes() -> Data? {
+        let pb = NSPasteboard.general
+        if let d = pb.data(forType: Self.bytesType) { return d }
+        guard let s = pb.string(forType: .string), !s.isEmpty else { return nil }
+        if !asciiPane, let p = BufferOps.parsePattern(s), !p.contains(where: { $0 == nil }),
+           s.trimmingCharacters(in: .whitespacesAndNewlines).range(of: "^[0-9A-Fa-fxX ,\\n\\r\\t]+$", options: .regularExpression) != nil {
+            return Data(p.compactMap { $0 })
+        }
+        return Data(s.utf8)
+    }
+
+    /// Paste overwrites from the cursor (or selection start) and keeps the buffer size.
+    @objc func paste(_ sender: Any?) {
+        guard let owner = owner, let bytes = pasteboardBytes(), count > 0 else { NSSound.beep(); return }
+        let at = selection?.lowerBound ?? cursor
+        let n = min(bytes.count, count - at)
+        guard n > 0 else { NSSound.beep(); return }
+        owner.edit { $0.replace(at..<(at + n), with: bytes.prefix(n)) }
+        selection = at..<(at + n)
+        cursor = min(at + n, count - 1); anchor = cursor
+        needsDisplay = true
+        owner.onSelectionChange?()
+    }
+
+    @objc func pasteInserting(_ sender: Any?) {
+        guard let owner = owner, let bytes = pasteboardBytes() else { NSSound.beep(); return }
+        owner.insert(bytes)
+    }
+
+    @objc func delete(_ sender: Any?) { deleteForward(sender) }
+
+    @objc override func selectAll(_ sender: Any?) {
+        guard count > 0 else { return }
+        selection = 0..<count
+        anchor = 0; cursor = count - 1
+        needsDisplay = true
+        owner?.onSelectionChange?()
+    }
+
+    @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        switch item.action {
+        case #selector(copy(_:)), #selector(copyAsHex(_:)), #selector(cut(_:)), #selector(delete(_:)): return count > 0
+        case #selector(paste(_:)): return count > 0 && pasteboardHasContent
+        case #selector(pasteInserting(_:)): return pasteboardHasContent
+        case #selector(selectAll(_:)): return count > 0
+        default: return true
+        }
+    }
+
+    private var pasteboardHasContent: Bool {
+        NSPasteboard.general.availableType(from: [Self.bytesType, .string]) != nil
     }
 }

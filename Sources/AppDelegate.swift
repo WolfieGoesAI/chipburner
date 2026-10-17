@@ -77,6 +77,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
         editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
         editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        let pasteIns = editMenu.addItem(withTitle: "Paste Inserting", action: Selector(("pasteInserting:")), keyEquivalent: "v")
+        pasteIns.keyEquivalentModifierMask = [.command, .option]
+        editMenu.addItem(withTitle: "Delete", action: #selector(NSText.delete(_:)), keyEquivalent: "")
         editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         editItem.submenu = editMenu
 
@@ -113,6 +116,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         find.keyEquivalentModifierMask = [.command, .option]
         bufMenu.addItem(withTitle: "Find Next", action: #selector(MainWindowController.findNextInBuffer(_:)), keyEquivalent: "g")
         bufMenu.addItem(.separator())
+        bufMenu.addItem(withTitle: "Insert Bytes…", action: #selector(MainWindowController.insertBytes(_:)), keyEquivalent: "")
         bufMenu.addItem(withTitle: "Fill Range…", action: #selector(MainWindowController.fillBufferRange(_:)), keyEquivalent: "")
         bufMenu.addItem(withTitle: "Checksum of Range…", action: #selector(MainWindowController.checksumBufferRange(_:)), keyEquivalent: "")
         bufMenu.addItem(withTitle: "Resize Buffer…", action: #selector(MainWindowController.resizeBuffer(_:)), keyEquivalent: "")

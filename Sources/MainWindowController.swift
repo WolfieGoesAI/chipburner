@@ -31,6 +31,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     private var textScroll: NSScrollView!
     private var bufferEdited = false
     private var lastFindPattern = ""
+    private let selectionLabel = NSTextField(labelWithString: "")
     private var labelUpdatePending = false
     private let logView = MainWindowController.makeTextView()
     private let memoryPopup = NSPopUpButton(frame: .zero, pullsDown: false)
@@ -553,6 +554,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         } else {
             hexEditor.setData(buffer)
             textEditor.string = ""
+            updateSelectionLabel()
             textScroll.isHidden = true
             hexEditor.isHidden = false
         }
@@ -713,7 +715,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     }
 
     /// Runs one minipro job with progress and logging; `done` gets success and the full output.
-    private func runJob(_ title: String, _ args: [String], then done: ((Bool, String) -> Void)? = nil) {
+    private func runJob(_ title: String, _ args: [String], logicic: URL? = nil, then done: ((Bool, String) -> Void)? = nil) {
         guard !isBusy else { return }
         isBusy = true
         progress.doubleValue = 0
@@ -721,7 +723,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         log("▶︎ \(title): minipro \(args.joined(separator: " "))")
         let percent = try? NSRegularExpression(pattern: "(\\d{1,3})%")
         var collected: [String] = []
-        running = Minipro.shared.run(args, onLine: { [weak self] line, isProgress in
+        running = Minipro.shared.run(args, logicic: logicic, onLine: { [weak self] line, isProgress in
             guard let self = self else { return }
             if isProgress {
                 self.setStatus(line)
@@ -1256,8 +1258,62 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         m.addItem(withTitle: "Open .jed into Buffer…", action: #selector(openJEDIntoBuffer(_:)), keyEquivalent: "")
         m.addItem(withTitle: "Save Buffer as .jed…", action: #selector(saveBufferAsJED(_:)), keyEquivalent: "")
         m.addItem(.separator())
+        m.addItem(withTitle: "GAL Functional Test…", action: #selector(galFunctionalTest(_:)), keyEquivalent: "")
+        m.addItem(withTitle: "Logic Test Vectors…", action: #selector(customLogicTest(_:)), keyEquivalent: "")
+        m.addItem(.separator())
         m.addItem(withTitle: "Supported PLDs…", action: #selector(showSupportedPLDs(_:)), keyEquivalent: "")
         return m
+    }
+
+    private func openVectorEditor(_ test: LogicTest, title: String, notes: [String]) {
+        let c = LogicVectorWindowController(test: test, title: title, notes: notes) { [weak self] title, args, url, done in
+            guard let self = self else { return }
+            if self.isBusy { NSSound.beep(); done(false, "Another job is still running."); return }
+            self.runJob(title, args, logicic: url, then: done)
+        }
+        c.showWindow(nil)
+    }
+
+    /// Generates logic-tester vectors from a .jed (buffer or file) and opens them in the vector editor.
+    @objc func galFunctionalTest(_ sender: Any?) {
+        guard let w = window else { return }
+        func start(_ text: String, _ name: String) {
+            do {
+                let design = try GalDecoder.decode(try JEDECFile.parse(text), hint: chip.isEmpty ? nil : chip)
+                let g = GalTestGenerator.generate(design)
+                var notes = ["Functional test of a programmed \(design.chip.rawValue) from \(name): \(g.test.vectors.count) vectors, checking output pin(s) \(g.checkedOutputs.map(String.init).joined(separator: ", "))."]
+                notes += g.notes
+                notes.append("Put the programmed GAL in the socket (bottom-aligned, pin 1 at the lever end) and press Run Test. The test only reads and drives pins; it doesn't change the GAL.")
+                if design.securityBit { notes.append("This .jed has the security fuse set – that doesn't matter for this test.") }
+                openVectorEditor(g.test, title: "GAL Functional Test – \(name)", notes: notes)
+            } catch {
+                showError("Can't build a test from \(name).", "\(error)")
+            }
+        }
+        if bufferIsText && bufferExt == "jed" && !buffer.isEmpty {
+            start(String(decoding: buffer, as: UTF8.self), bufferName)
+            return
+        }
+        let panel = NSOpenPanel()
+        panel.allowedFileTypes = ["jed", "JED"]
+        panel.message = "Choose the .jed the GAL was programmed with."
+        panel.beginSheetModal(for: w) { resp in
+            guard resp == .OK, let url = panel.url, let data = try? Data(contentsOf: url) else { return }
+            start(String(decoding: data, as: UTF8.self), url.lastPathComponent)
+        }
+    }
+
+    @objc func customLogicTest(_ sender: Any?) {
+        var start = LogicTest(name: "CUSTOM", pins: 14, voltage: "5V", vectors: [])
+        if chipDetails?.kind == .logic, let url = Minipro.shared.logicic, let text = try? String(contentsOf: url),
+           let t = LogicTest.parseXML(text, name: chip) {
+            start = t
+            start.name = chip + "_MOD"
+        }
+        openVectorEditor(start, title: "Logic Test Vectors", notes: [
+            "Write your own test vectors, or start from a database chip with From Database…, and press Run Test.",
+            "Each line is one test step; the tester drives the 0/1/C pins, then checks the L/H/Z pins.",
+        ])
     }
 
     @objc func showPLDMenu(_ sender: NSButton) {
@@ -1728,10 +1784,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             b.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
             return b
         }
-        let hint = NSTextField(labelWithString: "Double-click a byte to edit it")
-        hint.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        hint.textColor = .secondaryLabelColor
-        return row(buttons + [spacer(), hint])
+        selectionLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        selectionLabel.textColor = .secondaryLabelColor
+        selectionLabel.lineBreakMode = .byTruncatingHead
+        selectionLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        hexEditor.onSelectionChange = { [weak self] in self?.updateSelectionLabel() }
+        updateSelectionLabel()
+        return row(buttons + [spacer(), selectionLabel])
     }
 
     /// Called after every edit: marks the buffer edited and refreshes the label (checksums are
@@ -1750,6 +1809,34 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         guard (notification.object as? NSTextView) === textEditor else { return }
         buffer = Data(textEditor.string.utf8)
         bufferChanged()
+    }
+
+    private func updateSelectionLabel() {
+        guard !bufferIsText, !buffer.isEmpty else { selectionLabel.stringValue = "Click to place the cursor, drag to select"; return }
+        if let s = hexEditor.selection {
+            selectionLabel.stringValue = "Selected \(hexAddr(s.lowerBound))–\(hexAddr(s.upperBound - 1)) (\(s.count) bytes)"
+        } else {
+            let a = hexEditor.selectedAddress
+            selectionLabel.stringValue = a < buffer.count ? String(format: "Cursor %@ = %02X", hexAddr(a), buffer[a]) : ""
+        }
+    }
+
+    /// Start/end defaults for range dialogs: the selection, or cursor…end.
+    private var defaultRange: (String, String) {
+        if let s = hexEditor.selection { return (hexAddr(s.lowerBound), hexAddr(s.upperBound - 1)) }
+        return (hexAddr(hexEditor.selectedAddress), hexAddr(max(0, buffer.count - 1)))
+    }
+
+    @objc func insertBytes(_ sender: Any?) {
+        guard requireBinaryBuffer(allowEmpty: true) else { return }
+        askFields("Insert bytes", "Inserts bytes at the cursor\(hexEditor.selection != nil ? ", replacing the selection" : ""); the rest of the buffer moves up. \(numberHelp)",
+                  [("Count:", "10"), ("Fill with:", "FF")], ok: "Insert") { [weak self] v in
+            guard let self = self else { return }
+            guard let n = BufferOps.parseNumber(v[0]), n > 0, n <= 16 << 20 else { self.showError("Invalid count.", self.numberHelp); return }
+            guard let p = BufferOps.parsePattern(v[1]), !p.contains(where: { $0 == nil }) else { self.showError("Invalid fill value.", "Use hex bytes such as FF or a pattern such as 55 AA."); return }
+            self.hexEditor.insert(BufferOps.fill(count: n, pattern: p.compactMap { $0 }))
+            self.log("Inserted \(n) bytes.")
+        }
     }
 
     private func requireBinaryBuffer(allowEmpty: Bool = false) -> Bool {
@@ -1875,7 +1962,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     @objc func fillBufferRange(_ sender: Any?) {
         guard requireBinaryBuffer() else { return }
         askFields("Fill range", "Fills from start to end (both included) with a byte or a repeating pattern. \(numberHelp)",
-                  [("Start:", hexAddr(hexEditor.selectedAddress)), ("End:", hexAddr(buffer.count - 1)), ("Fill with:", "FF")], ok: "Fill") { [weak self] v in
+                  [("Start:", defaultRange.0), ("End:", defaultRange.1), ("Fill with:", "FF")], ok: "Fill") { [weak self] v in
             guard let self = self, let r = self.parseRange(v[0], v[1]) else { return }
             guard let p = BufferOps.parsePattern(v[2]), !p.contains(where: { $0 == nil }) else {
                 self.showError("Invalid fill value.", "Use hex bytes such as FF, or a pattern such as 55 AA, or text in quotes.")
@@ -1890,7 +1977,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     @objc func checksumBufferRange(_ sender: Any?) {
         guard requireBinaryBuffer() else { return }
         askFields("Checksum of range", "Start and end are both included. \(numberHelp)",
-                  [("Start:", hexAddr(0)), ("End:", hexAddr(buffer.count - 1))], ok: "Calculate") { [weak self] v in
+                  [("Start:", hexEditor.selection != nil ? defaultRange.0 : hexAddr(0)), ("End:", hexEditor.selection != nil ? defaultRange.1 : hexAddr(buffer.count - 1))], ok: "Calculate") { [weak self] v in
             guard let self = self, let r = self.parseRange(v[0], v[1]) else { return }
             let c = BufferOps.checksums(self.buffer.subdata(in: r))
             let text = String(format: """
