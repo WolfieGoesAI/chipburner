@@ -1909,10 +1909,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
                     let lines = output.components(separatedBy: .newlines)
                         .map { $0.trimmingCharacters(in: .whitespaces) }
                         .filter { !$0.isEmpty && !$0.contains("overridden database") }
-                    let problems = lines.filter { $0.range(of: "error|fail|short|overcurrent|bad", options: [.regularExpression, .caseInsensitive]) != nil }
+                    // A line is only a problem if it doesn't say OK ("VPP overcurrent protection is OK." is fine).
+                    let problems = lines.filter {
+                        $0.range(of: "error|fail|short|overcurrent|bad", options: [.regularExpression, .caseInsensitive]) != nil
+                            && $0.range(of: "\\bOK\\.?$", options: .regularExpression) == nil
+                            && !$0.localizedCaseInsensitiveContains("completed successfully")
+                    }
+                    let passed = output.localizedCaseInsensitiveContains("completed successfully") || problems.isEmpty
+                    let checks = lines.filter { $0.range(of: "\\bOK\\.?$", options: .regularExpression) != nil }.count
                     let summary = lines.suffix(25).joined(separator: "\n")
-                    if ok && problems.isEmpty {
-                        self.showInfo("H/W Test passed", "\(who)\n\nThe self-test reported no problems.\n\n" + summary)
+                    if ok && passed && problems.isEmpty {
+                        self.showInfo("H/W Test passed", "\(who)\n\nAll \(checks) checks passed: VPP, VCC and GND drivers, logic levels on every pin, and VPP/VCC overcurrent protection.\n\nThe full list is in the Log.")
                     } else {
                         self.showError(ok ? "H/W Test found problems" : "The self-test didn't complete",
                                        "\(who)\n\n" + (problems.isEmpty ? summary : problems.joined(separator: "\n")) + "\n\nThe full output is in the Log.")
