@@ -2104,7 +2104,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             b.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
             return b
         }
-        let r = row(buttons + tools + [spacer()])
+        // Evenly spread from the editor's left edge to its right edge.
+        let r = row(buttons + tools)
+        r.distribution = .equalSpacing
         r.spacing = 3
         return r
     }
