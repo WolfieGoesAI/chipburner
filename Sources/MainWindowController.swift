@@ -165,6 +165,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         guard let content = window?.contentView else { return }
 
         programmerLabel.lineBreakMode = .byTruncatingTail
+        programmerLabel.textColor = .secondaryLabelColor     // the same grey as the text after Voltages:
         programmerLabel.isSelectable = true
 
         chipField.placeholderString = "e.g. AM27C256@DIP28 – use Search or Chip Ident"
@@ -174,17 +175,24 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         let logicID = button("Logic Ident…", #selector(identifyLogic(_:)))
         let hardware = button("Hardware…", #selector(hardwareMenu(_:)))
         // Two rows: Logic Ident under Chip Ident, Logic Test under Chip Test, Hardware under Chip Info.
+        // A stretchable gap before the six chip buttons keeps them flush right (with Save… below).
+        func gap() -> NSView {
+            let v = NSView()
+            v.setContentHuggingPriority(NSLayoutConstraint.Priority(rawValue: 1), for: .horizontal)
+            return v
+        }
         let chipRow = NSGridView(views: [
-            [bold("Chip:"), chipField, button("Search…", #selector(searchChips(_:))),
-             button("Chip Ident…", #selector(identifyChip(_:))), chipTestButton, button("Chip Info", #selector(chipInfo(_:))), NSView()],
-            [bold("H/W:"), programmerLabel, NSView(), logicID, logic, hardware, NSView()],
+            [bold("Chip:"), chipField, button("Search…", #selector(searchChips(_:))), gap(),
+             button("Chip Ident…", #selector(identifyChip(_:))), chipTestButton, button("Chip Info", #selector(chipInfo(_:)))],
+            [bold("H/W:"), programmerLabel, NSView(), gap(), logicID, logic, hardware],
         ])
         // The programmer name may use the Search column's space too.
         chipRow.row(at: 1).mergeCells(in: NSRange(location: 1, length: 2))
         chipRow.rowSpacing = 6
         chipRow.columnSpacing = 8
         chipRow.rowAlignment = .firstBaseline
-        for c in 2...5 { chipRow.column(at: c).xPlacement = .fill }   // equal-width buttons per column
+        for c in [2, 4, 5, 6] { chipRow.column(at: c).xPlacement = .fill }   // equal-width buttons per column
+        chipRow.column(at: 3).xPlacement = .fill
         chipRow.column(at: 1).xPlacement = .fill
         chipField.setContentHuggingPriority(.defaultHigh, for: .horizontal)
 
