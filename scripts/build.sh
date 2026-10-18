@@ -237,7 +237,6 @@ diag "minipro source" "$MINIPRO_DESC"$'\n'"$("$APP/Contents/MacOS/minipro" --ver
 diag "Test-related chip types" "$(grep -E '^(SRAM|DRAMLOGIC|LOGICNAMES|TL866A entries)' <<<"$DBT")"
 diag "Pinout coverage" "$(grep '^PINCOVER' <<<"$DBT")"
 diag "Logic models" "$(grep "^LOGICMODELS" <<<"$DBT")"
-diag "PIC16F84 entries" "$(grep -n -B1 -A22 "name=\"PIC16F84" "$APP/Contents/Resources/minipro/infoic.xml" | head -110 | tr -s " " | cut -c1-200)"
 diag "minipro vector parsing" "$(grep -n -i "vector" "$WORK/src/minipro-git/src/database.c" | head -40 | cut -c1-200)"
 diag "Fuses & Locks families" "$(grep -E '^(FL|FUSES)' <<<"$DBT")"
 printf '%s' "$DIAG" > "$ROOT/diag.txt"
