@@ -68,6 +68,10 @@ for i in $(seq 12); do adb shell input keyevent 67; done
 adb shell input text 74161; sleep 3
 adb shell input keyevent 111; sleep 2
 tap_text "74161" last | tee -a "$OUT"; sleep 2
+shot 4c0-logic-chip
+tap_text "Info" | tee -a "$OUT"; sleep 8
+shot 4c1-logic-info
+adb shell input keyevent KEYCODE_BACK; sleep 1
 tap_text "Pinout" | tee -a "$OUT"; sleep 2
 shot 4c-logic-pinout
 adb shell input keyevent KEYCODE_BACK; sleep 1
@@ -84,6 +88,12 @@ tap_text "A" | tee -a "$OUT"; tap_text "5" | tee -a "$OUT"; sleep 1
 shot 5-buffer
 tap_text "Test" | tee -a "$OUT"; sleep 2
 shot 6-test
+tap_text "Extended test" | tee -a "$OUT"; sleep 2
+shot 6b-extended
+tap_text "Search logic chip" | tee -a "$OUT"; sleep 3
+adb shell input keyevent 111; sleep 2
+shot 6c-logic-search
+adb shell input keyevent KEYCODE_BACK; sleep 1
 tap_text "Log" | tee -a "$OUT"; sleep 2
 shot 7-log
 say "### crashes"

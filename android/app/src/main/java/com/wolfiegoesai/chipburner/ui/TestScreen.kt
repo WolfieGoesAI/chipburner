@@ -20,6 +20,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -43,7 +45,9 @@ import com.wolfiegoesai.chipburner.ChipInfo
 
 @Composable
 fun TestScreen(state: AppState, onSearch: () -> Unit) {
-    var repeats by rememberSaveable { mutableIntStateOf(1) }
+    var repeats by rememberSaveable { mutableIntStateOf(10) }
+    var extendedMode by rememberSaveable { mutableStateOf(false) }
+    var exhaustive by rememberSaveable { mutableStateOf(true) }
     var showIdent by remember { mutableStateOf(false) }
     var showPinout by remember { mutableStateOf(false) }
     var infoText by remember { mutableStateOf<String?>(null) }
@@ -73,17 +77,37 @@ fun TestScreen(state: AppState, onSearch: () -> Unit) {
                 OutlineButton("Info", Modifier.weight(1f), enabled = !state.busy && state.chip.isNotEmpty()) { state.chipInfoText { infoText = it } }
                 OutlineButton("Pinout", Modifier.weight(1f), enabled = state.chip.isNotEmpty() && info != null) { showPinout = true }
             }
+            val plan = remember(state.chip, state.dbReady) { if (isLogic) state.extendedPlan() else null }
+            val hasModel = plan?.ext != null
             Card {
-                Eyebrow("Runs")
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    for (n in listOf(1, 10, 25, 50, 100)) FilterChipButton(if (n == 1) "Once" else "$n times", repeats == n) { repeats = n }
+                Eyebrow("Test")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChipButton("Standard test", !extendedMode) { extendedMode = false }
+                    FilterChipButton("Extended test", extendedMode) { extendedMode = true }
                 }
-                Text(
-                    if (repeats == 1) "Runs minipro's test vectors once at 5 V." else "Repeats the test $repeats times – catches chips that fail now and then.",
-                    fontSize = 13.sp, color = C.text2, fontFamily = Sans,
-                )
+                if (!extendedMode) {
+                    Text("Runs minipro's test vectors for the chip once.", fontSize = 13.sp, color = C.text2, fontFamily = Sans)
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Checkbox(
+                            checked = hasModel && exhaustive, enabled = hasModel, onCheckedChange = { exhaustive = it },
+                            colors = CheckboxDefaults.colors(checkedColor = C.amber, checkmarkColor = C.onAmber, uncheckedColor = C.text2),
+                        )
+                        Text("Exhaustive / sequence test", fontFamily = Sans, fontSize = 15.sp, color = if (hasModel) C.text else C.text3)
+                    }
+                    if (plan != null) Text(plan.detail, fontSize = 13.sp, color = C.text2, fontFamily = Sans)
+                    Text("Repeat the standard test", fontFamily = Sans, fontSize = 14.sp, color = C.text, modifier = Modifier.padding(top = 4.dp))
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        for (n in listOf(0, 10, 25, 50, 100)) FilterChipButton(if (n == 0) "Don't repeat" else "$n times", repeats == n) { repeats = n }
+                    }
+                    Text("Repeated runs catch chips that fail now and then (marginal or overheating parts). Stop ends the test early.",
+                        fontSize = 13.sp, color = C.text2, fontFamily = Sans)
+                }
             }
-            PrimaryButton("Test chip", enabled = !state.busy && isLogic) { state.logicTest(repeats) }
+            val extendedRunnable = !extendedMode || (exhaustive && hasModel) || repeats > 0
+            PrimaryButton(if (extendedMode) "Start extended test" else "Test chip", enabled = !state.busy && isLogic && extendedRunnable) {
+                if (extendedMode) state.extendedLogicTest(exhaustive && hasModel, repeats) else state.logicTest(1)
+            }
 
             state.testResult?.let { r ->
                 val good = r.passed
@@ -95,16 +119,25 @@ fun TestScreen(state: AppState, onSearch: () -> Unit) {
                         Icon(if (good) Icons.Default.Check else Icons.Default.Close, contentDescription = null, tint = if (good) Color(0xFFB7F0C0) else Color(0xFFFFC9C0))
                     }
                     Column {
-                        Text(if (good) "Passed" else "Failed", fontFamily = Sans, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = if (good) Color(0xFFDFF7E3) else Color(0xFFFFE1DB))
+                        Text((if (r.title.isNotEmpty()) r.title + ": " else "") + if (good) "Passed" else if (r.report.isNotEmpty() && r.report.lastOrNull() == "Stopped before the end." && r.report.none { it.startsWith("✗") }) "Stopped" else "Failed", fontFamily = Sans, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = if (good) Color(0xFFDFF7E3) else Color(0xFFFFE1DB))
                         Text(
                             buildString {
-                                append(r.chip).append(" · ")
-                                append(if (r.runs <= 1) "${r.runs} run" else "${r.runs} runs")
-                                if (r.failedRuns > 0) append(" · ${r.failedRuns} failed")
+                                append(r.chip)
+                                if (r.report.isEmpty()) {
+                                    append(" · ").append(if (r.runs <= 1) "${r.runs} run" else "${r.runs} runs")
+                                    if (r.failedRuns > 0) append(" · ${r.failedRuns} failed")
+                                }
                                 if (r.note.isNotEmpty()) append("\n").append(r.note)
                             },
                             fontFamily = Sans, fontSize = 13.sp, color = if (good) Color(0xFFA8CFAF) else Color(0xFFE9B3A9),
                         )
+                    }
+                }
+                if (r.report.isNotEmpty()) {
+                    Card {
+                        Eyebrow("Report")
+                        for (l in r.report) Text(l, fontFamily = Sans, fontSize = 13.sp,
+                            color = when { l.startsWith("✓") -> C.green; l.startsWith("✗") -> C.red; else -> C.text })
                     }
                 }
                 if (r.failingLines.isNotEmpty()) {

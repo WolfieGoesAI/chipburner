@@ -69,7 +69,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
     var logicMatches by mutableStateOf<List<String>?>(null)
     @Volatile private var scanCancelled = false
 
-    data class TestResult(val chip: String, val passed: Boolean, val runs: Int, val failedRuns: Int, val failingLines: List<String>, val note: String)
+    data class TestResult(val chip: String, val passed: Boolean, val runs: Int, val failedRuns: Int, val failingLines: List<String>, val note: String, val report: List<String> = emptyList(), val title: String = "")
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
@@ -575,6 +575,8 @@ class AppState(app: Application) : AndroidViewModel(app) {
             val rule = Regex("^\\s*-{3,}.*$")
             if (lines.isNotEmpty() && rule.matches(lines.first())) lines.removeAt(0)
             if (lines.isNotEmpty() && rule.matches(lines.last())) lines.removeAt(lines.size - 1)
+            // logic chips: minipro prints the vector table with a dashed rule after the vector count – drop every rule
+            if (chipInfo?.kind == ChipInfo.Kind.LOGIC) lines.removeAll { rule.matches(it) }
             onDone(lines.joinToString("\n"))
         }
     }
@@ -633,7 +635,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
             if (k > repeats || (minipro.stopRequested && k > 1)) {
                 val done = k - 1
                 testResult = TestResult(name, failed == 0 && done == repeats, done, failed, failing.take(20),
-                    if (done < repeats) "Stopped after $done of $repeats runs." else "")
+                    if (done < repeats) "Stopped after $done of $repeats runs." else "", title = "Standard test")
                 return
             }
             runJob(if (repeats > 1) "Logic test $name – run $k of $repeats" else "Logic test $name", listOf("-p", name, "-T")) { ok, out ->
@@ -649,6 +651,102 @@ class AppState(app: Application) : AndroidViewModel(app) {
             }
         }
         next(1)
+    }
+
+    /** The exhaustive / sequence test for the selected logic chip, when a model covers it. */
+    class ExtendedPlan(val ext: LogicModels.Extended?, val detail: String)
+
+    fun extendedPlan(): ExtendedPlan? {
+        val name = chip
+        if (name.isEmpty()) return null
+        val group = db.logicGroup(name) ?: return null
+        val p = LogicModels.pins(name, group)
+        val e = if (p != null && p.second.size == group.pins) LogicModels.extended(p.first, p.second, p.third) else null
+        if (p == null || e == null) return ExtendedPlan(null,
+            "ChipBurner has no working model of $name yet, so only the repeated standard test is available. Exhaustive and sequence tests cover the common gates, buffers, decoders, multiplexers, adders, comparators, flip-flops, latches, counters and shift registers.")
+        val same = if (Pinouts.logicBase(name) == p.first) "" else " (uses the ${p.first} model – same function and pinout)"
+        return ExtendedPlan(e, "${e.vectors.size} test steps$same: ${e.description}. ${e.checks} output checks in all, worked out from a model of the chip.")
+    }
+
+    /** Extended Logic Test (as on the Mac): the exhaustive / sequence test, then the standard test repeated. */
+    fun extendedLogicTest(exhaustive: Boolean, repeats: Int) {
+        if (!needsChip()) return
+        val name = chip
+        val group = db.logicGroup(name)
+        if (group == null) { message = "$name isn't in the logic database" to "Choose the chip with Search or Identify logic chip."; return }
+        val e = if (exhaustive) extendedPlan()?.ext else null
+        if (e == null && repeats == 0) return
+        scanCancelled = false
+        testResult = null
+        val report = ArrayList<String>()
+        val failing = ArrayList<String>()
+        var failed = false
+        var stdRuns = 0; var stdFails = 0
+        fun finish(stopped: Boolean) {
+            if (stopped) report += "Stopped before the end."
+            addLog("Extended logic test $name:")
+            report.forEach { addLog(it) }
+            testResult = TestResult(name, !failed && !stopped, stdRuns, stdFails, failing.take(20), "", report.toList(), "Extended test")
+        }
+        fun repeatsFrom(k: Int) {
+            if (k > repeats) {
+                if (repeats > 0) report += if (stdFails == 0) "✓ Standard test: passed all $repeats runs." else "✗ Standard test: failed $stdFails of $repeats runs."
+                finish(false); return
+            }
+            if (scanCancelled) {
+                report += if (stdFails == 0) "✓ Standard test: passed ${k - 1} of $repeats runs." else "✗ Standard test: failed $stdFails of ${k - 1} runs."
+                finish(true); return
+            }
+            runJob("Logic test $name – run $k of $repeats", listOf("-p", name, "-T")) { ok, out ->
+                val f = Chips.failingVectorLines(out)
+                val passed = ok && f.isEmpty()
+                if (!passed && f.isEmpty() && !out.contains("Logic test failed")) {
+                    if (!scanCancelled) { report += "Standard test run $k didn't complete."; failed = true }
+                    else report += if (stdFails == 0) "✓ Standard test: passed ${k - 1} of $repeats runs." else "✗ Standard test: failed $stdFails of ${k - 1} runs."
+                    finish(scanCancelled); return@runJob
+                }
+                stdRuns = k
+                if (!passed) { stdFails++; failed = true; if (failing.isEmpty()) failing += f }
+                repeatsFrom(k + 1)
+            }
+        }
+        if (e == null) { repeatsFrom(1); return }
+        val safe = "CBX" + name.uppercase().map { if (it.isLetterOrDigit()) it else '_' }.joinToString("")
+        val file = File(ctx.cacheDir, "extended-logicic.xml")
+        try {
+            file.writeText(buildString {
+                append("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<logicic>\n  <database type=\"LOGIC\">\n    <manufacturer name=\"ChipBurner\">\n")
+                append("      <ic name=\"$safe\" type=\"5\" voltage=\"${group.voltage.ifEmpty { "5V" }}\" pins=\"${group.pins}\">\n")
+                e.vectors.forEachIndexed { i, v -> append("        <vector id=\"%02d\"> ".format(i)).append(v.toList().joinToString(" ")).append(" </vector>\n") }
+                append("      </ic>\n    </manufacturer>\n  </database>\n</logicic>\n")
+            })
+        } catch (x: Exception) { message = "Could not write the test file" to (x.message ?: ""); return }
+        runJob("Extended logic test $name (${e.vectors.size} steps)", listOf("-p", safe, "-T"), logicOverride = file) { ok, out ->
+            val row = Regex("^\\d{4}:")
+            val bad = ArrayList<Int>(); var errors = 0; var success = false
+            for (line in out.lines()) {
+                val t = line.trim()
+                if (row.containsMatchIn(t) && t.contains('-')) { bad += t.take(4).toIntOrNull() ?: -1; errors += t.count { it == '-' } }
+                if (t.lowercase().contains("logic test successful")) success = true
+            }
+            if (bad.isEmpty() && success && ok) {
+                report += "✓ Exhaustive / sequence test: all ${e.vectors.size} steps (${e.checks} output checks) passed."
+            } else if (bad.isNotEmpty()) {
+                failed = true
+                val byPhase = HashMap<String, Int>()
+                for (v in bad) byPhase[e.phaseOf(v)] = (byPhase[e.phaseOf(v)] ?: 0) + 1
+                val parts = e.phases.mapNotNull { (pn, _) -> byPhase[pn]?.let { "$it in $pn" } }
+                val first = bad.take(8).joinToString(", ") { "%04d".format(it) }
+                report += "✗ Exhaustive / sequence test: $errors wrong pin state(s) in ${bad.size} of ${e.vectors.size} steps – " +
+                    parts.joinToString(", ") + ". First failing steps: $first" + (if (bad.size > 8) " …" else "") + "."
+                failing += Chips.failingVectorLines(out).take(20)
+            } else {
+                report += if (scanCancelled) "Exhaustive / sequence test stopped." else "✗ Exhaustive / sequence test didn't run – see the log for minipro's message."
+                if (!scanCancelled) failed = true
+                finish(scanCancelled); return@runJob
+            }
+            repeatsFrom(1)
+        }
     }
 
     fun hardwareTest() {

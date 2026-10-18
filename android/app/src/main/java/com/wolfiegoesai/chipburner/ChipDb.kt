@@ -225,7 +225,8 @@ class ChipDb(private val infoic: File, private val logicic: File) {
 
     fun search(query: String, programmer: String, kind: ChipInfo.Kind?, dipOnly: Boolean, limit: Int = 300): List<ChipInfo> {
         val q = query.trim().uppercase()
-        if (q.length < 2 || !loaded) return emptyList()
+        // with the Logic filter an empty query lists every logic chip (74xx and 40xx alike)
+        if (!loaded || (q.length < 2 && kind != ChipInfo.Kind.LOGIC)) return emptyList()
         val db = dbName(programmer)
         val seen = HashSet<String>()
         val out = ArrayList<ChipInfo>()

@@ -56,7 +56,7 @@ import kotlinx.coroutines.withContext
 @Composable
 fun SearchScreen(state: AppState, initialKind: String? = null, onClose: () -> Unit, onPick: (String) -> Unit) {
     val startLogic = initialKind == "LOGIC" && state.chipInfo?.kind != ChipInfo.Kind.LOGIC
-    val initial = if (startLogic) "74" else state.chip.substringBefore('@')
+    val initial = if (startLogic) "" else state.chip.substringBefore('@')
     var field by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue(initial, TextRange(initial.length))) }
     val query = field.text
     var kind by rememberSaveable { mutableStateOf(initialKind) }
@@ -66,7 +66,7 @@ fun SearchScreen(state: AppState, initialKind: String? = null, onClose: () -> Un
 
     LaunchedEffect(query, kind, dipOnly, state.dbReady) {
         val k = kind?.let { ChipInfo.Kind.valueOf(it) }
-        results = withContext(Dispatchers.Default) { state.db.search(query, state.programmerType, k, dipOnly) }
+        results = withContext(Dispatchers.Default) { state.db.search(query, state.programmerType, k, dipOnly, if (k == ChipInfo.Kind.LOGIC) 2000 else 300) }
     }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
 
@@ -90,7 +90,7 @@ fun SearchScreen(state: AppState, initialKind: String? = null, onClose: () -> Un
                     keyboardActions = KeyboardActions(onSearch = { results.firstOrNull()?.let { onPick(it.name) } }),
                     modifier = Modifier.weight(1f).padding(vertical = 14.dp).focusRequester(focus),
                     decorationBox = { inner ->
-                        if (query.isEmpty()) Text("Part number, e.g. 27C256 or 328P", color = C.text3, fontFamily = Sans, fontSize = 15.sp)
+                        if (query.isEmpty()) Text(if (kind == "LOGIC") "Part number, e.g. 7400 or 4017" else "Part number, e.g. 27C256 or 328P", color = C.text3, fontFamily = Sans, fontSize = 15.sp)
                         inner()
                     },
                 )
@@ -105,9 +105,9 @@ fun SearchScreen(state: AppState, initialKind: String? = null, onClose: () -> Un
         Text(
             when {
                 !state.dbReady -> "Loading the chip database…"
-                query.trim().length < 2 -> "Type at least 2 characters"
+                query.trim().length < 2 && kind != "LOGIC" -> "Type at least 2 characters"
                 results.isEmpty() -> "No matches"
-                results.size >= 300 -> "First 300 matches – type more to narrow it down"
+                results.size >= 300 && kind != "LOGIC" -> "First 300 matches – type more to narrow it down"
                 else -> "${results.size} matches"
             },
             fontSize = 13.sp, color = C.text3, fontFamily = Sans, modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),

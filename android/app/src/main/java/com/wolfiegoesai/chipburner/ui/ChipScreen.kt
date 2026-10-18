@@ -64,6 +64,8 @@ fun ChipScreen(state: AppState, files: FileActions, onSearch: () -> Unit, onShow
     val chipInfo = state.chipInfo
     val erase = state.eraseMethod
     val canWork = !state.busy
+    // logic chips are tested on the Test page – none of the memory operations apply
+    val canMemory = canWork && state.chipInfo?.kind != ChipInfo.Kind.LOGIC
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 16.dp)) {
         Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 12.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -129,23 +131,25 @@ fun ChipScreen(state: AppState, files: FileActions, onSearch: () -> Unit, onShow
 
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    TileButton("Read", Modifier.weight(1f), enabled = canWork) { state.readChip() }
-                    TileButton("Test", Modifier.weight(1f), enabled = canWork) {
+                    TileButton("Read", Modifier.weight(1f), enabled = canMemory) { state.readChip() }
+                    TileButton("Test", Modifier.weight(1f), enabled = canMemory) {
                         if (state.chipTestKind == null) state.message = "Chip Test isn't available" to (if (state.chip.isEmpty()) "Choose a chip first." else "It works with SRAM and with EPROM, EEPROM and flash memory chips. Logic chips are tested on the Test tab.")
                         else showChipTest = true
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    TileButton("Program", Modifier.weight(1f), enabled = canWork) {
+                    TileButton("Program", Modifier.weight(1f), enabled = canMemory) {
                         if (state.buffer.isEmpty()) state.message = "The buffer is empty" to "Open a file or read a chip first." else confirmProgram = true
                     }
-                    TileButton("Verify", Modifier.weight(1f), enabled = canWork) { state.verify() }
+                    TileButton("Verify", Modifier.weight(1f), enabled = canMemory) { state.verify() }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    TileButton("Blank check", Modifier.weight(1f), enabled = canWork) { state.blankCheck() }
-                    TileButton("Erase", Modifier.weight(1f), enabled = canWork && erase !is AppState.EraseMethod.Unavailable) { state.erase() }
+                    TileButton("Blank check", Modifier.weight(1f), enabled = canMemory) { state.blankCheck() }
+                    TileButton("Erase", Modifier.weight(1f), enabled = canMemory && erase !is AppState.EraseMethod.Unavailable) { state.erase() }
                 }
-                if (erase is AppState.EraseMethod.Unavailable && state.chip.isNotEmpty() && chipInfo != null) {
+                if (chipInfo?.kind == ChipInfo.Kind.LOGIC) {
+                    Text("Logic chips are tested on the Test page.", fontSize = 12.sp, color = C.text3, fontFamily = Sans, modifier = Modifier.padding(horizontal = 4.dp))
+                } else if (erase is AppState.EraseMethod.Unavailable && state.chip.isNotEmpty() && chipInfo != null) {
                     Text("Erase isn't available: ${erase.why}", fontSize = 12.sp, color = C.text3, fontFamily = Sans, modifier = Modifier.padding(horizontal = 4.dp))
                 } else if (erase is AppState.EraseMethod.Fill) {
                     Text("This chip has no erase command: Erase fills it with FF and verifies.", fontSize = 12.sp, color = C.text3, fontFamily = Sans, modifier = Modifier.padding(horizontal = 4.dp))
