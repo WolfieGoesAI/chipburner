@@ -204,7 +204,7 @@ object Pinouts {
             val items = entry.second.split(' ')
             if (items.size != pins) continue
             val names = items.map { it.substringAfter(':') }
-            val r = items.map { it.first() }
+            val r = items.mapIndexed { i, it -> if (it.first() == 'i' && roles.getOrNull(i) == 'c') 'c' else it.first() }
             val title = if (base == logicBase(display)) "$display – ${entry.first}" else "$display – same pinout as $base (${entry.first})"
             return ChipPinout(title, names, listOf("Pin names from the data sheet; outputs in green."), r)
         }
