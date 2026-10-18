@@ -28,11 +28,14 @@ shot() { adb shell screencap -p /sdcard/s.png && adb pull /sdcard/s.png "shots/$
 tap_text() {
   adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
   adb pull /sdcard/ui.xml ui.xml >/dev/null 2>&1
-  python3 - "$1" <<'PY'
+  python3 - "$@" <<'PY'
 import re, sys, subprocess
 want = sys.argv[1]
+last = len(sys.argv) > 2
 x = open("ui.xml", encoding="utf-8", errors="replace").read()
-for m in re.finditer(r'<node [^>]*>', x):
+nodes = list(re.finditer(r'<node [^>]*>', x))
+if last: nodes.reverse()
+for m in nodes:
     n = m.group(0)
     t = re.search(r' text="([^"]*)"', n); d = re.search(r'content-desc="([^"]*)"', n)
     if (t and t.group(1) == want) or (d and d.group(1) == want):
@@ -61,7 +64,7 @@ tap_text "Search" | tee -a "$OUT"; sleep 2
 for i in $(seq 12); do adb shell input keyevent 67; done
 adb shell input text 74161; sleep 3
 adb shell input keyevent 111; sleep 2
-tap_text "74161" | tee -a "$OUT"; sleep 2
+tap_text "74161" last | tee -a "$OUT"; sleep 2
 tap_text "Pinout" | tee -a "$OUT"; sleep 2
 shot 4c-logic-pinout
 adb shell input keyevent KEYCODE_BACK; sleep 1
