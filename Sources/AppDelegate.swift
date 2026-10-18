@@ -71,7 +71,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             gitlab.com/DavidGriffith/minipro
             \(dbLine)libusb \(v("ChipBurnerLibusb")) – GNU LGPL 2.1
             GAL assembler based on Galette by Simon Frankau – MIT licence
-            Disassemblers ported from MAME (Juergen Buchmueller, Nathan Woods, Sean Riddle, Tim Lindner, Olivier Galibert, Steve Ellenoff) – BSD-3-Clause
 
             Source code: github.com/WolfieGoesAI/chipburner
             """
@@ -165,9 +164,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         bufMenu.addItem(withTitle: "Resize Buffer…", action: #selector(MainWindowController.resizeBuffer(_:)), keyEquivalent: "")
         bufMenu.addItem(.separator())
         bufMenu.addItem(withTitle: "Compare with File…", action: #selector(MainWindowController.compareWithFile(_:)), keyEquivalent: "")
-        bufMenu.addItem(withTitle: "Compare with Chip…", action: #selector(MainWindowController.compareWithChip(_:)), keyEquivalent: "")
-        let dis = bufMenu.addItem(withTitle: "Disassemble…", action: #selector(MainWindowController.disassemble(_:)), keyEquivalent: "d")
-        dis.keyEquivalentModifierMask = [.command, .option]
+        bufMenu.addItem(withTitle: "Compare with Chip", action: #selector(MainWindowController.compareWithChip(_:)), keyEquivalent: "")
         bufItem.submenu = bufMenu
 
         let winItem = NSMenuItem(); main.addItem(winItem)

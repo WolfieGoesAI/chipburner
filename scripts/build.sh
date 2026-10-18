@@ -229,11 +229,6 @@ GT="$("$WORK/galtest" "$ROOT/tests/gal/cases" 2>&1)" || { echo "$GT"; printf '##
 echo "$GT"
 note "JED decoder test" "$(grep -v '^;' <<<"$GT" | tail -40)"
 
-log "Test: disassemblers against MAME's output"
-xcrun swiftc -O -sdk "$SDK" "$ROOT/Sources/Disassembler.swift" "$ROOT/Sources/DisasmTables.swift" "$ROOT/tests/disasmtest/main.swift" -o "$WORK/disasmtest"
-DT="$("$WORK/disasmtest" "$ROOT/tests/disasm/vectors.txt" 2>&1)" || { echo "$DT"; printf '### disasmtest\n%s\n' "$(head -150 <<<"$DT")" > "$ROOT/diag.txt"; false; }
-echo "$DT"
-note "Disassembler test" "$(tail -8 <<<"$DT")"
 
 # Extra diagnostics: add diag "title" "text" lines here; the workflow prints them as notices.
 DIAG=""

@@ -169,7 +169,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
 
         chipField.placeholderString = "e.g. AM27C256@DIP28 – use Search or Chip Ident"
         chipField.delegate = self
-        chipField.widthAnchor.constraint(greaterThanOrEqualToConstant: 250).isActive = true
+        chipField.widthAnchor.constraint(greaterThanOrEqualToConstant: 300).isActive = true
         let logic = logicTestButton
         let logicID = button("Logic Ident…", #selector(identifyLogic(_:)))
         let hardware = button("Hardware…", #selector(hardwareMenu(_:)))
@@ -177,7 +177,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         let chipRow = NSGridView(views: [
             [bold("Chip:"), chipField, button("Search…", #selector(searchChips(_:))),
              button("Chip Ident…", #selector(identifyChip(_:))), chipTestButton, button("Chip Info", #selector(chipInfo(_:))), NSView()],
-            [bold("Programmer:"), programmerLabel, NSView(), logicID, logic, hardware, NSView()],
+            [bold("H/W:"), programmerLabel, NSView(), logicID, logic, hardware, NSView()],
         ])
         // The programmer name may use the Search column's space too.
         chipRow.row(at: 1).mergeCells(in: NSRange(location: 1, length: 2))
@@ -1695,7 +1695,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         }
     }
 
-    /// Build screenshots of the tool windows (disassembly, pinout, compare).
+    /// Build screenshots of the tool windows (pinout, compare).
     func saveToolScreenshots(base: String) {
         func snap(_ w: NSWindow?, _ suffix: String) {
             guard let content = w?.contentView else { return }
@@ -1706,16 +1706,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
                 print("SMOKE screenshot saved: \(base + suffix)")
             }
         }
-        let z80: [UInt8] = [0xF3, 0x31, 0x00, 0x80, 0xED, 0x56, 0x3E, 0x00, 0xD3, 0x10, 0x21, 0x00, 0x40, 0x11, 0x01, 0x40,
-                            0x01, 0xFF, 0x0F, 0x36, 0x00, 0xED, 0xB0, 0xCD, 0x20, 0x00, 0xFB, 0x18, 0xFE, 0xFF, 0xFF, 0xFF,
-                            0xF5, 0xC5, 0xDD, 0x7E, 0x05, 0xFE, 0x0A, 0x30, 0x04, 0xC6, 0x30, 0x18, 0x02, 0xC6, 0x37, 0xD3,
-                            0x11, 0xC1, 0xF1, 0xC9]
-        UserDefaults.standard.set(DisasmCPU.z80.rawValue, forKey: "disasmCPU")
-        let d = DisassemblyWindowController(bytes: Data(z80), name: "example.bin", startOffset: nil)
-        d.window?.setContentSize(NSSize(width: 640, height: 460))
-        d.showWindow(nil)
-        snap(d.window, "-disasm.png")
-        d.close()
         if let p = Pinouts.find(chip: "AM27C256@DIP28", size: 32768) {
             let pw = PinoutWindowController(chip: "AM27C256@DIP28", pinout: p)
             pw.showWindow(nil)
@@ -1773,7 +1763,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         }
         walk(content)
         print("SMOKE window visible=\(w.isVisible) frame=\(NSStringFromRect(w.frame)) content=\(NSStringFromRect(content.frame)) buttons=\(buttons.count)")
-        for t in ["Read", "Stop", "Comp w File…", "Comp w Chip…", "Disassemble…", "Redo", "Hardware…", "Save…", "Open…", "Fuses & Locks…", "Chip Test…", "Chip Ident…", "Logic Ident…", "Chip Info", "Logic Test", "Auto…", "Voltages…", "Options…"] {
+        for t in ["Read", "Stop", "Compare w Chip", "Compare w File…", "Redo", "Hardware…", "Save…", "Open…", "Fuses & Locks…", "Chip Test…", "Chip Ident…", "Logic Ident…", "Chip Info", "Logic Test", "Auto…", "Voltages…", "Options…"] {
             if let r = buttons[t] { print(String(format: "SMOKE %@ x=%.0f..%.0f y=%.0f..%.0f", t, r.minX, r.maxX, r.minY, r.maxY)) }
             else { print("SMOKE missing button: \(t)") }
         }
@@ -1793,7 +1783,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     // MARK: Hardware
 
     /// Hardware… : check which programmer is connected, or run its self-test.
-    // MARK: Compare, disassemble, pinout
+    // MARK: Compare, pinout
 
     private var logicicText: String?
 
@@ -1819,7 +1809,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
 
     private func requireBinaryBuffer() -> Bool {
         if buffer.isEmpty { showError("The buffer is empty.", "Open a file or read a chip first."); return false }
-        if bufferIsText { showError("The buffer holds a text file.", "Compare and Disassemble work on binary data – open a .bin, .hex or .s19 file, or read a chip."); return false }
+        if bufferIsText { showError("The buffer holds a text file.", "Compare works on binary data – open a .bin, .hex or .s19 file, or read a chip."); return false }
         return true
     }
 
@@ -1862,17 +1852,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             guard let self = self, ok, let data = try? Data(contentsOf: out) else { return }
             self.openCompare(name: self.chip, data: data)
         }
-    }
-
-    @objc func disassemble(_ sender: Any?) {
-        guard requireBinaryBuffer() else { return }
-        let c = DisassemblyWindowController(bytes: buffer, name: bufferName.isEmpty ? "buffer" : bufferName, startOffset: hexEditor.selection?.lowerBound)
-        c.onSelectInBuffer = { [weak self] r in
-            guard let self = self else { return }
-            self.hexEditor.select(r.clamped(to: 0..<self.buffer.count))
-            self.window?.makeKeyAndOrderFront(nil)
-        }
-        c.showWindow(nil)
     }
 
     /// Zoom / maximise: keep the width and position, use the screen's full usable height.
@@ -2161,19 +2140,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         }
         hexEditor.onSelectionChange = { [weak self] in self?.updateSelectionLabel() }
         updateSelectionLabel()
-        let tools = [("Comp w File…", #selector(compareWithFile(_:))), ("Comp w Chip…", #selector(compareWithChip(_:)))].map { item -> NSButton in
+        let tools = [("Compare w Chip", #selector(compareWithChip(_:))), ("Compare w File…", #selector(compareWithFile(_:)))].map { item -> NSButton in
             let b = button(item.0, item.1)
             b.controlSize = .small
             b.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
             return b
         }
-        // Disassemble… sits at the right end of the hex editor's column-title line.
-        let dis = button("Disassemble…", #selector(disassemble(_:)))
-        dis.controlSize = .small
-        dis.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        hexEditor.headerAccessory = dis
         let r = row(buttons + tools + [spacer()])
-        r.spacing = 5
+        r.spacing = 3
         return r
     }
 
