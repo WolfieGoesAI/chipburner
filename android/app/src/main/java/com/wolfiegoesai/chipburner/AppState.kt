@@ -570,15 +570,26 @@ class AppState(app: Application) : AndroidViewModel(app) {
     fun chipInfoText(onDone: (String) -> Unit) {
         if (!needsChip()) return
         runJob("Chip info", listOf("-q", programmerType, "-d", chip), needsUsb = false) { _, out ->
-            onDone(out.lines().filter { it.isNotBlank() && !it.contains("overridden database") && !it.startsWith("****") }.joinToString("\n"))
+            val lines = out.lines().filter { it.isNotBlank() && !it.contains("overridden database") && !it.startsWith("****") }.toMutableList()
+            // drop the "-----Chip Info-----" heading and the closing "-----" line
+            val rule = Regex("^\\s*-{3,}.*$")
+            if (lines.isNotEmpty() && rule.matches(lines.first())) lines.removeAt(0)
+            if (lines.isNotEmpty() && rule.matches(lines.last())) lines.removeAt(lines.size - 1)
+            onDone(lines.joinToString("\n"))
         }
     }
 
-    enum class IdentKind(val label: String, val reference: String?) {
+    enum class IdentKind(val label: String, val reference: String?, val spiPins: Int = 0) {
+        SPI8("SPI flash (25-series), 8 pins", null, 8),
+        SPI16("SPI flash (25-series), 16-pin SOIC adapter", null, 16),
         EPROM28("28-pin 27-series EPROM (27C64–27C512, W27C512)", "AM27C256@DIP28"),
         EPROM32("32-pin 27-series EPROM (27C010–27C080, 27SF0x0)", "AM27C010@DIP32"),
-        SPI8("SPI flash (25-series), 8 pins", null),
+        SAME("Same type as the selected chip", ""),
     }
+
+    /** "Same type as" is offered when the selected chip is a 27-series EPROM. */
+    val canIdentifySameType: Boolean
+        get() = chip.isNotEmpty() && chipInfo != null && (Chips.isUVEPROM(chip) || chip.uppercase().startsWith("W27"))
 
     var identMatches by mutableStateOf<List<String>?>(null)
 
@@ -588,14 +599,14 @@ class AppState(app: Application) : AndroidViewModel(app) {
             return
         }
         if (kind.reference == null) {
-            runJob("Auto-detect SPI flash", listOf("-a", "8")) { _, out ->
+            runJob("Auto-detect SPI flash (${kind.spiPins} pins)", listOf("-a", "${kind.spiPins}")) { _, out ->
                 val names = out.lines().map { it.trim() }.filter { it.isNotEmpty() && !it.contains(' ') && it.contains('@') }
                     .filter { db.info(it, programmerType) != null }
                 if (names.isEmpty()) message = "No SPI flash found" to lastLines() else identMatches = names
             }
             return
         }
-        val ref = kind.reference
+        val ref = if (kind == IdentKind.SAME) chip else kind.reference
         val refInfo = db.info(ref, programmerType)
         runJob("Read ID", listOf("-p", ref, "-D", "-y")) { _, out ->
             val id = Chips.parseChipId(out)

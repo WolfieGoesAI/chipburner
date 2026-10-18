@@ -60,6 +60,7 @@ fun ChipScreen(state: AppState, files: FileActions, onSearch: () -> Unit, onShow
     var showPinout by remember { mutableStateOf(false) }
     var showLogicIdent by remember { mutableStateOf(false) }
     var showChipTest by remember { mutableStateOf(false) }
+    var saveAsk by remember { mutableStateOf(false) }
     val chipInfo = state.chipInfo
     val erase = state.eraseMethod
     val canWork = !state.busy
@@ -155,7 +156,7 @@ fun ChipScreen(state: AppState, files: FileActions, onSearch: () -> Unit, onShow
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.weight(1f)) { Eyebrow("Buffer") }
                     TextButton(onClick = files.open) { Text("Open file", color = C.amber, fontFamily = Sans) }
-                    TextButton(onClick = { files.save(suggestedBufferName(state)) }, enabled = state.buffer.isNotEmpty()) {
+                    TextButton(onClick = { saveAsk = true }, enabled = state.buffer.isNotEmpty()) {
                         Text("Save file", color = if (state.buffer.isNotEmpty()) C.amber else C.text3, fontFamily = Sans)
                     }
                 }
@@ -174,6 +175,7 @@ fun ChipScreen(state: AppState, files: FileActions, onSearch: () -> Unit, onShow
     if (showIdent) IdentDialog(state, onLogic = { showLogicIdent = true }) { showIdent = false }
     if (showLogicIdent) LogicIdentDialog(state) { showLogicIdent = false }
     LogicMatchesDialog(state)
+    if (saveAsk) SaveFormatDialog(state, files) { saveAsk = false }
     if (showChipTest) ChipTestDialog(state) { showChipTest = false }
     if (showPinout) PinoutDialog(state.chip, state.currentPinout()) { showPinout = false }
     state.identMatches?.let { matches ->
@@ -181,14 +183,7 @@ fun ChipScreen(state: AppState, files: FileActions, onSearch: () -> Unit, onShow
             state.selectChip(it); state.identMatches = null
         }
     }
-    info?.let { text ->
-        AlertDialog(
-            onDismissRequest = { info = null }, containerColor = C.card,
-            confirmButton = { TextButton(onClick = { info = null }) { Text("Close", color = C.amber) } },
-            title = { Text(state.chip, fontFamily = Mono) },
-            text = { Text(text, fontFamily = Mono, fontSize = 12.sp, modifier = Modifier.verticalScroll(rememberScrollState())) },
-        )
-    }
+    info?.let { text -> InfoDialog(state.chip, text) { info = null } }
     if (confirmProgram) ProgramSheet(state, onDismiss = { confirmProgram = false })
     if (showOptions) OptionsDialog(state) { showOptions = false }
     if (showAbout) AboutDialog(state) { showAbout = false }
@@ -223,10 +218,11 @@ private fun IdentDialog(state: AppState, onLogic: () -> Unit, onDismiss: () -> U
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Put the chip in the socket (bottom-aligned, pin 1 at the lever) and choose what kind it is.", fontFamily = Sans, fontSize = 14.sp)
                 for (k in AppState.IdentKind.values()) {
-                    OutlineButton(k.label, Modifier.fillMaxWidth()) { onDismiss(); state.identify(k) }
+                    if (k == AppState.IdentKind.SAME && !state.canIdentifySameType) continue
+                    val label = if (k == AppState.IdentKind.SAME) "Same type as ${state.chip}" else k.label
+                    OutlineButton(label, Modifier.fillMaxWidth()) { onDismiss(); state.identify(k) }
                 }
-                OutlineButton("Logic chip (74xx / 4000) – try every type…", Modifier.fillMaxWidth()) { onDismiss(); onLogic() }
-                Text("The EPROM read puts about 12 V on pin A9. Only use it for 27-series EPROMs (UV or electrically erasable), never for 28-series EEPROMs, flash or microcontrollers.",
+                Text("SPI flash is read at 3.3 V with the standard JEDEC ID command; 1.8 V chips need a 1.8 V adapter. The EPROM read puts about 12 V on pin A9. Only use it for 27-series EPROMs (UV or electrically erasable), never for 28-series EEPROMs, flash or microcontrollers.",
                     fontFamily = Sans, fontSize = 12.sp, color = C.text2)
             }
         },
@@ -378,4 +374,33 @@ fun LogicMatchesDialog(state: AppState) {
             state.selectChip(it.substringBefore(" / ")); state.logicMatches = null
         }
     }
+}
+
+
+@Composable
+fun InfoDialog(chip: String, text: String, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss, containerColor = C.card,
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close", color = C.amber) } },
+        title = { Text(chip, fontFamily = Mono) },
+        text = { Text(text, fontFamily = Mono, fontSize = 12.sp, modifier = Modifier.verticalScroll(rememberScrollState())) },
+    )
+}
+
+/** Save the buffer as a binary (.bin) or Intel HEX (.hex) file. */
+@Composable
+fun SaveFormatDialog(state: AppState, files: FileActions, onDismiss: () -> Unit) {
+    val base = suggestedBufferName(state).substringBeforeLast('.')
+    AlertDialog(
+        onDismissRequest = onDismiss, containerColor = C.card,
+        title = { Text("Save buffer", fontFamily = Sans, fontWeight = FontWeight.SemiBold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("${"%,d".format(state.buffer.size)} bytes. Choose the file format; you can change the name in the next step.", fontFamily = Sans, fontSize = 13.sp, color = C.text2)
+                OutlineButton("Binary (.bin)", Modifier.fillMaxWidth()) { onDismiss(); files.save("$base.bin") }
+                OutlineButton("Intel HEX (.hex)", Modifier.fillMaxWidth()) { onDismiss(); files.save("$base.hex") }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = C.amber) } },
+    )
 }

@@ -65,8 +65,6 @@ fun BufferScreen(state: AppState, files: FileActions) {
                 )
             }
             IconButton(onClick = { state.undoEdit() }, enabled = state.canUndo) { Icon(painterResource(R.drawable.ic_undo), "Undo", tint = if (state.canUndo) C.text else C.text3, modifier = Modifier.size(20.dp)) }
-            IconButton(onClick = files.open) { Icon(painterResource(R.drawable.ic_open), "Open file", tint = C.text, modifier = Modifier.size(20.dp)) }
-            IconButton(onClick = { dialog = "save" }, enabled = b.isNotEmpty()) { Icon(painterResource(R.drawable.ic_save), "Save file", tint = if (b.isNotEmpty()) C.text else C.text3, modifier = Modifier.size(20.dp)) }
         }
 
         Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

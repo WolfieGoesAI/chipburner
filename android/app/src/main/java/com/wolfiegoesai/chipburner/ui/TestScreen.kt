@@ -45,6 +45,8 @@ import com.wolfiegoesai.chipburner.ChipInfo
 fun TestScreen(state: AppState, onSearch: () -> Unit) {
     var repeats by rememberSaveable { mutableIntStateOf(1) }
     var showIdent by remember { mutableStateOf(false) }
+    var showPinout by remember { mutableStateOf(false) }
+    var infoText by remember { mutableStateOf<String?>(null) }
     val info = state.chipInfo
     val isLogic = info?.kind == ChipInfo.Kind.LOGIC
 
@@ -64,8 +66,12 @@ fun TestScreen(state: AppState, onSearch: () -> Unit) {
 
         Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlineButton("Search logic chips", Modifier.weight(1f), onClick = onSearch)
-                OutlineButton("Logic Ident…", Modifier.weight(1f), enabled = !state.busy) { showIdent = true }
+                OutlineButton("Search logic chip", Modifier.weight(1f), onClick = onSearch)
+                OutlineButton("Identify logic chip", Modifier.weight(1f), enabled = !state.busy) { showIdent = true }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlineButton("Info", Modifier.weight(1f), enabled = !state.busy && state.chip.isNotEmpty()) { state.chipInfoText { infoText = it } }
+                OutlineButton("Pinout", Modifier.weight(1f), enabled = state.chip.isNotEmpty() && info != null) { showPinout = true }
             }
             Card {
                 Eyebrow("Runs")
@@ -109,6 +115,8 @@ fun TestScreen(state: AppState, onSearch: () -> Unit) {
                 }
             }
             if (showIdent) LogicIdentDialog(state) { showIdent = false }
+            if (showPinout) PinoutDialog(state.chip, state.currentPinout()) { showPinout = false }
+            infoText?.let { InfoDialog(state.chip, it) { infoText = null } }
             LogicMatchesDialog(state)
             Text("The TL866A tests at a fixed 5 V and reads pins as high or low; it can't measure output levels or current, so a weak chip can still pass.",
                 fontSize = 12.sp, color = C.text3, fontFamily = Sans, modifier = Modifier.padding(horizontal = 4.dp))
