@@ -1773,7 +1773,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         }
         walk(content)
         print("SMOKE window visible=\(w.isVisible) frame=\(NSStringFromRect(w.frame)) content=\(NSStringFromRect(content.frame)) buttons=\(buttons.count)")
-        for t in ["Read", "Stop", "Compare w File…", "Compare w Chip…", "Disassemble…", "Redo", "Hardware…", "Save…", "Open…", "Fuses & Locks…", "Chip Test…", "Chip Ident…", "Logic Ident…", "Chip Info", "Logic Test", "Auto…", "Voltages…", "Options…"] {
+        for t in ["Read", "Stop", "Comp w File…", "Comp w Chip…", "Disassemble…", "Redo", "Hardware…", "Save…", "Open…", "Fuses & Locks…", "Chip Test…", "Chip Ident…", "Logic Ident…", "Chip Info", "Logic Test", "Auto…", "Voltages…", "Options…"] {
             if let r = buttons[t] { print(String(format: "SMOKE %@ x=%.0f..%.0f y=%.0f..%.0f", t, r.minX, r.maxX, r.minY, r.maxY)) }
             else { print("SMOKE missing button: \(t)") }
         }
@@ -2161,14 +2161,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         }
         hexEditor.onSelectionChange = { [weak self] in self?.updateSelectionLabel() }
         updateSelectionLabel()
-        let tools = [("Compare w File…", #selector(compareWithFile(_:))), ("Compare w Chip…", #selector(compareWithChip(_:))),
-                     ("Disassemble…", #selector(disassemble(_:)))].map { item -> NSButton in
+        let tools = [("Comp w File…", #selector(compareWithFile(_:))), ("Comp w Chip…", #selector(compareWithChip(_:)))].map { item -> NSButton in
             let b = button(item.0, item.1)
             b.controlSize = .small
             b.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
             return b
         }
-        return row(buttons + tools + [spacer()])
+        // Disassemble… sits at the right end of the hex editor's column-title line.
+        let dis = button("Disassemble…", #selector(disassemble(_:)))
+        dis.controlSize = .small
+        dis.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        hexEditor.headerAccessory = dis
+        let r = row(buttons + tools + [spacer()])
+        r.spacing = 6
+        return r
     }
 
     /// Called after every edit: marks the buffer edited and refreshes the label (checksums are

@@ -53,6 +53,20 @@ final class HexEditorView: NSView {
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
+    /// A small control shown right-aligned on the column-title line (e.g. a Disassemble button).
+    var headerAccessory: NSView? {
+        didSet {
+            oldValue?.removeFromSuperview()
+            guard let v = headerAccessory else { return }
+            v.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(v)
+            NSLayoutConstraint.activate([
+                v.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -4),
+                v.centerYAnchor.constraint(equalTo: header.centerYAnchor),
+            ])
+        }
+    }
+
     // MARK: Data
 
     func setData(_ data: Data) {
