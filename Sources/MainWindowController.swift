@@ -575,7 +575,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             ? (testKind == .sram ? "Pattern test for this SRAM." : "Health check for this EPROM/EEPROM/flash: repeated reads, content analysis and an optional write test.")
             : "Chip Test works with SRAM and with EPROM, EEPROM and flash memory chips."
         configButton.toolTip = currentConfig != nil ? "Read and write this chip's fuses, user ID and lock bits in a separate window."
-                                                    : "The selected chip has no fuses, user ID or lock bits in the database."
+                                                    : (chipDetails?.kind == .mcu
+                                                       ? "minipro's database has no fuse/config layout for this chip, so its configuration bits can't be read or written here."
+                                                       : "The selected chip has no fuses, user ID or lock bits in the database.")
         if let b = eraseButton {
             let m = eraseMethod
             if case .unavailable(let why) = m { b.isEnabled = false; b.toolTip = why }
