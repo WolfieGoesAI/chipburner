@@ -55,6 +55,20 @@ class AppState(app: Application) : AndroidViewModel(app) {
     var noErase by mutableStateOf(prefs.getBoolean("noErase", false)); private set
     var noVerify by mutableStateOf(prefs.getBoolean("noVerify", false)); private set
 
+    // Connection: 0 ZIF socket, 1 ICSP powered by the programmer (-i), 2 ICSP, board powers itself (-I)
+    var connection by mutableIntStateOf(prefs.getInt("connection", 0)); private set
+    val connectionNames = listOf("ZIF socket", "ICSP – power from programmer", "ICSP – board has its own power")
+    private val connectionArgs: List<String> get() = when (connection) { 1 -> listOf("-i"); 2 -> listOf("-I"); else -> emptyList() }
+
+    fun setConnection(c: Int) {
+        connection = c
+        prefs.edit().putInt("connection", c).apply()
+        addLog("Connection: ${connectionNames[c]}")
+    }
+
+    var logicMatches by mutableStateOf<List<String>?>(null)
+    @Volatile private var scanCancelled = false
+
     data class TestResult(val chip: String, val passed: Boolean, val runs: Int, val failedRuns: Int, val failingLines: List<String>, val note: String)
 
     init {
@@ -205,6 +219,9 @@ class AppState(app: Application) : AndroidViewModel(app) {
         jobTitle = title
         progress = 0f
         status = "$title…"
+        // ICSP: the connection flag goes right after the chip name (not for the ID read or logic tests)
+        val args = if (connection != 0 && args.size >= 2 && args[0] == "-p" && "-T" !in args && "-D" !in args)
+            args.take(2) + connectionArgs + args.drop(2) else args
         addLog("▶ $title: minipro ${args.joinToString(" ")}")
         val fd = if (needsUsb) usb.fd else null
         viewModelScope.launch(Dispatchers.IO) {
@@ -236,7 +253,59 @@ class AppState(app: Application) : AndroidViewModel(app) {
     }
 
     fun stop() {
-        if (busy) { addLog("Stopping…"); minipro.stop() }
+        if (busy) { addLog("Stopping…"); scanCancelled = true; minipro.stop() }
+    }
+
+    /** Logic chips have no ID: run the test of every 5 V chip type with this pin count and list the ones that pass. */
+    fun identifyLogic(pins: Int) {
+        if (busy || !needsProgrammer()) return
+        val groups = db.identGroups(pins)
+        if (groups.isEmpty()) { message = "No $pins-pin logic chips" to "The database has no 5 V logic chips with $pins pins."; return }
+        busy = true
+        jobTitle = "Logic Ident ($pins pins)"
+        progress = 0f
+        scanCancelled = false
+        addLog("▶ Logic Ident: testing ${groups.size} $pins-pin chip types")
+        val fd = usb.fd
+        viewModelScope.launch(Dispatchers.IO) {
+            val passed = ArrayList<ChipDb.LogicGroup>()
+            var abort: String? = null
+            var tested = 0
+            for ((i, g) in groups.withIndex()) {
+                if (scanCancelled) { abort = "Stopped after $tested of ${groups.size} types."; break }
+                val label = g.names.joinToString(" / ")
+                withContext(Dispatchers.Main) { status = "Testing $label (${i + 1} of ${groups.size})"; progress = i.toFloat() / groups.size }
+                val (code, out) = minipro.runCollect(listOf("-p", g.names[0], "-T"), fd)
+                tested++
+                val low = out.lowercase()
+                if ("overcurrent" in low) { abort = "minipro reported overcurrent while testing ${g.names[0]}. Check the chip's orientation and pin count."; break }
+                if ("no programmer" in low || ("not found" in low && "programmer" in low)) { abort = "The programmer isn't responding. Check the USB cable."; break }
+                val ok = code == 0 && Chips.failingVectorLines(out).isEmpty()
+                if (ok) passed += g
+                withContext(Dispatchers.Main) { addLog("$label: ${if (ok) "PASS" else "fail"}") }
+            }
+            withContext(Dispatchers.Main) {
+                busy = false
+                progress = if (abort == null) 1f else null
+                status = "Logic Ident: ${passed.size} match(es) after $tested of ${groups.size} types"
+                addLog("✓ Logic Ident finished: ${passed.size} match(es).")
+                when {
+                    passed.isNotEmpty() -> logicMatches = passed.map { it.names.joinToString(" / ") }
+                    abort != null -> message = "Logic Ident stopped" to abort
+                    else -> message = "No match" to "The chip didn't pass any $pins-pin test. Check that it is seated correctly (bottom-aligned, pin 1 at the lever), or that it isn't one with non-standard power pins such as the 7490 – those can be tested one at a time."
+                }
+            }
+        }
+    }
+
+    /** The selected chip's pinout drawing, if there is one. */
+    fun currentPinout(): ChipPinout? {
+        val info = chipInfo ?: return null
+        if (info.kind == ChipInfo.Kind.LOGIC) {
+            val g = db.logicGroup(chip) ?: return null
+            return Pinouts.logic(chip, g.pins, g.group, g.vectors)
+        }
+        return Pinouts.find(chip, info.codeSize, info.kind == ChipInfo.Kind.SRAM)
     }
 
     private fun tempFile(name: String) = File(minipro.workDir, name)

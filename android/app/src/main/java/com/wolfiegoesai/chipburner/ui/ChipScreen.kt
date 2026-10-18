@@ -56,6 +56,9 @@ fun ChipScreen(state: AppState, files: FileActions, onSearch: () -> Unit, onShow
     var confirmProgram by remember { mutableStateOf(false) }
     var showOptions by remember { mutableStateOf(false) }
     var showAbout by remember { mutableStateOf(false) }
+    var connMenu by remember { mutableStateOf(false) }
+    var showPinout by remember { mutableStateOf(false) }
+    var showLogicIdent by remember { mutableStateOf(false) }
     val chipInfo = state.chipInfo
     val erase = state.eraseMethod
     val canWork = !state.busy
@@ -70,8 +73,17 @@ fun ChipScreen(state: AppState, files: FileActions, onSearch: () -> Unit, onShow
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(text = { Text("Check programmer") }, onClick = { menu = false; state.refreshUsb(); state.detectProgrammer() })
                     DropdownMenuItem(text = { Text("Programmer self-test…") }, onClick = { menu = false; state.hardwareTest() })
+                    DropdownMenuItem(text = { Text("Connection: ${state.connectionNames[state.connection]}  ▸") }, onClick = { menu = false; connMenu = true })
                     DropdownMenuItem(text = { Text("Options…") }, onClick = { menu = false; showOptions = true })
                     DropdownMenuItem(text = { Text("About ChipBurner") }, onClick = { menu = false; showAbout = true })
+                }
+                DropdownMenu(expanded = connMenu, onDismissRequest = { connMenu = false }) {
+                    for ((i, name) in state.connectionNames.withIndex()) {
+                        DropdownMenuItem(
+                            text = { Text((if (state.connection == i) "✓  " else "     ") + name) },
+                            onClick = { connMenu = false; state.setConnection(i) },
+                        )
+                    }
                 }
             }
         }
@@ -104,7 +116,13 @@ fun ChipScreen(state: AppState, files: FileActions, onSearch: () -> Unit, onShow
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlineButton("Search", Modifier.weight(1f), enabled = state.dbReady, onClick = onSearch)
                     OutlineButton("Ident", Modifier.weight(1f), enabled = canWork) { showIdent = true }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlineButton("Info", Modifier.weight(1f), enabled = canWork && state.chip.isNotEmpty()) { state.chipInfoText { info = it } }
+                    OutlineButton("Pinout", Modifier.weight(1f), enabled = state.chip.isNotEmpty() && chipInfo != null) { showPinout = true }
+                }
+                if (state.connection != 0) {
+                    Text("Connection: ${state.connectionNames[state.connection]}", fontSize = 12.sp, color = C.amberLight, fontFamily = Sans)
                 }
             }
 
@@ -150,7 +168,10 @@ fun ChipScreen(state: AppState, files: FileActions, onSearch: () -> Unit, onShow
         }
     }
 
-    if (showIdent) IdentDialog(state) { showIdent = false }
+    if (showIdent) IdentDialog(state, onLogic = { showLogicIdent = true }) { showIdent = false }
+    if (showLogicIdent) LogicIdentDialog(state) { showLogicIdent = false }
+    LogicMatchesDialog(state)
+    if (showPinout) PinoutDialog(state.chip, state.currentPinout()) { showPinout = false }
     state.identMatches?.let { matches ->
         PickDialog("Chips with this ID", "Pick the exact part printed on the chip.", matches, onDismiss = { state.identMatches = null }) {
             state.selectChip(it); state.identMatches = null
@@ -190,7 +211,7 @@ private fun ChipThumb(info: ChipInfo?) {
 private val Color4A4370 = androidx.compose.ui.graphics.Color(0xFF4A4370)
 
 @Composable
-private fun IdentDialog(state: AppState, onDismiss: () -> Unit) {
+private fun IdentDialog(state: AppState, onLogic: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss, containerColor = C.card,
         title = { Text("Chip Ident", fontFamily = Sans, fontWeight = FontWeight.SemiBold) },
@@ -200,6 +221,7 @@ private fun IdentDialog(state: AppState, onDismiss: () -> Unit) {
                 for (k in AppState.IdentKind.values()) {
                     OutlineButton(k.label, Modifier.fillMaxWidth()) { onDismiss(); state.identify(k) }
                 }
+                OutlineButton("Logic chip (74xx / 4000) – try every type…", Modifier.fillMaxWidth()) { onDismiss(); onLogic() }
                 Text("The EPROM read puts about 12 V on pin A9. Only use it for 27-series EPROMs (UV or electrically erasable), never for 28-series EEPROMs, flash or microcontrollers.",
                     fontFamily = Sans, fontSize = 12.sp, color = C.text2)
             }
@@ -320,4 +342,36 @@ fun InputDialog(title: String, label: String, initial: String = "", hex: Boolean
         confirmButton = { TextButton(onClick = { onDismiss(); onOk(text) }) { Text("OK", color = C.amber) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = C.text2) } },
     )
+}
+
+
+/** Logic Ident: pick the pin count, then every 5 V chip type with it is tested. */
+@Composable
+fun LogicIdentDialog(state: AppState, onDismiss: () -> Unit) {
+    val counts = state.db.identPinCounts
+    AlertDialog(
+        onDismissRequest = onDismiss, containerColor = C.card,
+        title = { Text("Logic Ident", fontFamily = Sans, fontWeight = FontWeight.SemiBold) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Logic chips have no ID. Put the chip in the socket bottom-aligned with pin 1 at the lever, and choose its pin count. ChipBurner runs the 5 V test of every chip type with ground on the last pin of the first row and supply on the last pin, and lists the ones it passes. About a second per type; Stop ends it early.",
+                    fontFamily = Sans, fontSize = 13.sp, color = C.text2)
+                for (n in counts) {
+                    val k = state.db.identGroups(n).size
+                    OutlineButton("$n pins  ($k chip types)", Modifier.fillMaxWidth()) { onDismiss(); state.identifyLogic(n) }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = C.amber) } },
+    )
+}
+
+@Composable
+fun LogicMatchesDialog(state: AppState) {
+    state.logicMatches?.let { matches ->
+        PickDialog("Logic chips the chip passed", "Chips on one line share the same test. Pick the one printed on the chip.", matches,
+            onDismiss = { state.logicMatches = null }) {
+            state.selectChip(it.substringBefore(" / ")); state.logicMatches = null
+        }
+    }
 }

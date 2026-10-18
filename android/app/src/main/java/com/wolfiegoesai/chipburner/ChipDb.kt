@@ -93,11 +93,47 @@ class ChipDb(private val infoic: File, private val logicic: File) {
     @Volatile var loaded = false
         private set
 
+    /** One <ic> of the logic database: the chips sharing these test vectors. */
+    data class LogicGroup(val names: List<String>, val pins: Int, val voltage: String, val vectors: List<String>) {
+        val group: String get() = names.joinToString(",")
+        /** Ground on the last pin of the first row and supply on the last pin, the usual DIP layout. */
+        val standardPower: Boolean
+            get() {
+                val v = vectors.firstOrNull() ?: return false
+                return v.indices.filter { v[it] == 'G' } == listOf(pins / 2 - 1) && v.indices.filter { v[it] == 'V' } == listOf(pins - 1)
+            }
+    }
+
+    val logicGroups = ArrayList<LogicGroup>()
+
     fun load() {
         if (infoic.exists()) scan(infoic, isLogic = false)
-        if (logicic.exists()) scan(logicic, isLogic = true)
+        if (logicic.exists()) {
+            scan(logicic, isLogic = true)
+            runCatching { loadLogicGroups(logicic.readText()) }
+        }
         loaded = true
     }
+
+    private fun loadLogicGroups(xml: String) {
+        val ic = Regex("<ic\\s([^>]*)>(.*?)</ic>", RegexOption.DOT_MATCHES_ALL)
+        val vec = Regex("<vector[^>]*>([^<]*)</vector>")
+        for (m in ic.findAll(xml)) {
+            val a = HashMap<String, String>()
+            for (x in attrRe.findAll(m.groupValues[1])) a[x.groupValues[1]] = x.groupValues[2]
+            val names = (a["name"] ?: continue).split(',').map { it.trim() }.filter { it.isNotEmpty() }
+            val vectors = vec.findAll(m.groupValues[2]).map { v -> v.groupValues[1].filter { !it.isWhitespace() } }.toList()
+            val pins = a["pins"]?.toIntOrNull() ?: vectors.firstOrNull()?.length ?: 0
+            logicGroups += LogicGroup(names, pins, a["voltage"] ?: "", vectors)
+        }
+    }
+
+    fun logicGroup(name: String): LogicGroup? = logicGroups.firstOrNull { g -> g.names.any { it.equals(name, ignoreCase = true) } }
+
+    /** Groups to try in Logic Ident: 5 V, standard power pins, this pin count. */
+    fun identGroups(pins: Int) = logicGroups.filter { it.pins == pins && it.standardPower && it.voltage.equals("5V", ignoreCase = true) }
+
+    val identPinCounts: List<Int> get() = logicGroups.filter { it.standardPower && it.voltage.equals("5V", true) }.map { it.pins }.distinct().sorted()
 
     private val attrRe = Regex("([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*\"([^\"]*)\"")
 

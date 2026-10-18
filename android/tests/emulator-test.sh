@@ -54,6 +54,23 @@ shot 3-chosen
 tap_text "Info" | tee -a "$OUT"; sleep 8
 shot 4-info
 adb shell input keyevent KEYCODE_BACK; sleep 1
+tap_text "Pinout" | tee -a "$OUT"; sleep 2
+shot 4b-pinout
+adb shell input keyevent KEYCODE_BACK; sleep 1
+tap_text "Search" | tee -a "$OUT"; sleep 2
+for i in $(seq 12); do adb shell input keyevent 67; done
+adb shell input text 74161; sleep 3
+adb shell input keyevent 111; sleep 2
+tap_text "74161" | tee -a "$OUT"; sleep 2
+tap_text "Pinout" | tee -a "$OUT"; sleep 2
+shot 4c-logic-pinout
+adb shell input keyevent KEYCODE_BACK; sleep 1
+tap_text "Ident" | tee -a "$OUT"; sleep 2
+shot 4d-ident
+adb shell input keyevent KEYCODE_BACK; sleep 1
+tap_text "More" | tee -a "$OUT"; sleep 2
+shot 4e-menu
+adb shell input keyevent KEYCODE_BACK; sleep 1
 tap_text "Buffer" | tee -a "$OUT"; sleep 2
 tap_text "New" | tee -a "$OUT"; sleep 2
 tap_text "OK" | tee -a "$OUT"; sleep 2

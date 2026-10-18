@@ -27,6 +27,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -42,6 +44,7 @@ import com.wolfiegoesai.chipburner.ChipInfo
 @Composable
 fun TestScreen(state: AppState, onSearch: () -> Unit) {
     var repeats by rememberSaveable { mutableIntStateOf(1) }
+    var showIdent by remember { mutableStateOf(false) }
     val info = state.chipInfo
     val isLogic = info?.kind == ChipInfo.Kind.LOGIC
 
@@ -60,8 +63,9 @@ fun TestScreen(state: AppState, onSearch: () -> Unit) {
         }
 
         Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (!isLogic) {
-                OutlineButton("Search for a logic chip", Modifier.fillMaxWidth(), onClick = onSearch)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlineButton("Search logic chips", Modifier.weight(1f), onClick = onSearch)
+                OutlineButton("Logic Ident…", Modifier.weight(1f), enabled = !state.busy) { showIdent = true }
             }
             Card {
                 Eyebrow("Runs")
@@ -104,6 +108,8 @@ fun TestScreen(state: AppState, onSearch: () -> Unit) {
                     }
                 }
             }
+            if (showIdent) LogicIdentDialog(state) { showIdent = false }
+            LogicMatchesDialog(state)
             Text("The TL866A tests at a fixed 5 V and reads pins as high or low; it can't measure output levels or current, so a weak chip can still pass.",
                 fontSize = 12.sp, color = C.text3, fontFamily = Sans, modifier = Modifier.padding(horizontal = 4.dp))
         }
