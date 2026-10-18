@@ -111,7 +111,7 @@ fun ChipScreen(state: AppState, files: FileActions, onSearch: () -> Unit, onShow
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     TileButton("Read", Modifier.weight(1f), enabled = canWork, accent = true) { state.readChip() }
-                    TileButton("Auto program…", Modifier.weight(1f), enabled = canWork) {
+                    TileButton("Auto…", Modifier.weight(1f), enabled = canWork) {
                         if (state.buffer.isEmpty()) state.message = "The buffer is empty" to "Open a file or read a chip first." else state.autoProgram()
                     }
                 }
