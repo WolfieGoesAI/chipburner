@@ -39,8 +39,9 @@ jobs:
         run: |
           set -e
           mkdir -p /tmp/fonts && cd /tmp/fonts
-          npm pack @ibm/plex-sans@1 @ibm/plex-mono@1 >/dev/null 2>&1 || npm pack @ibm/plex@6 >/dev/null
-          for f in *.tgz; do mkdir -p "${f%.tgz}"; tar xzf "$f" -C "${f%.tgz}"; done
+          curl -fsSL -o plex.zip https://github.com/IBM/plex/releases/download/v6.4.0/TrueType.zip \
+            && unzip -q plex.zip || { npm pack @ibm/plex@6 >/dev/null && for f in *.tgz; do mkdir -p "${f%.tgz}"; tar xzf "$f" -C "${f%.tgz}"; done; }
+          { echo "### font files"; find /tmp/fonts -name 'IBMPlex*Regular*' | head -10; } >> "$GITHUB_WORKSPACE/android-diag.txt"
           D="$GITHUB_WORKSPACE/android/app/src/main/res/font"
           mkdir -p "$D"
           pick() { F="$(find /tmp/fonts -type f -name "$1" -path '*ttf*' | head -1)"; [ -n "$F" ] || F="$(find /tmp/fonts -type f -name "$1" | head -1)"; [ -n "$F" ] || { echo "missing $1"; exit 1; }; cp "$F" "$D/$2"; }
