@@ -190,7 +190,7 @@ echo "::notice title=Chip search for 27C256::$NOTE"
 grep -q -i '27C256' <<<"$SEARCH" || { echo "ERROR: chip search returned nothing"; false; }
 
 log "Test: ChipBurner's database reader against the bundled database"
-xcrun swiftc -O -sdk "$SDK" "$ROOT/Sources/ChipDatabase.swift" "$ROOT/Sources/ChipCapabilities.swift" "$ROOT/Sources/DataFormats.swift" "$ROOT/Sources/BufferOps.swift" "$ROOT/Sources/ChipTests.swift" "$ROOT/Sources/Pinouts.swift" "$ROOT/Sources/LogicModels.swift" "$ROOT/Sources/LogicVectors.swift" "$ROOT/tests/dbtest/main.swift" -o "$WORK/dbtest"
+xcrun swiftc -O -sdk "$SDK" "$ROOT/Sources/ChipDatabase.swift" "$ROOT/Sources/ChipCapabilities.swift" "$ROOT/Sources/DataFormats.swift" "$ROOT/Sources/BufferOps.swift" "$ROOT/Sources/ChipTests.swift" "$ROOT/Sources/Pinouts.swift" "$ROOT/Sources/LogicModels.swift" "$ROOT/Sources/LogicVectors.swift" "$ROOT/Sources/GalDecoder.swift" "$ROOT/Sources/GalAssembler.swift" "$ROOT/tests/dbtest/main.swift" -o "$WORK/dbtest"
 DBT="$("$WORK/dbtest" "$APP/Contents/Resources/minipro/infoic.xml" "$APP/Contents/Resources/minipro/logicic.xml" 2>&1)" || {
   echo "$DBT"
   X="$APP/Contents/Resources/minipro/infoic.xml"
