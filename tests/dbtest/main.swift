@@ -339,5 +339,110 @@ do {
     }
 }
 
+
+// Logic chip models (Extended Logic Test): each must agree with minipro's own vectors, and the generated
+// sequences must match the reference generator the models were developed with.
+let expectedExtended: [String: (Int, Int, UInt64)] = [
+    "7400": (256, 1024, 0xa28297e3d9a12a75),
+    "7402": (256, 1024, 0x74fc1ce417dd9345),
+    "7404": (64, 384, 0x492233cfe3d77265),
+    "7408": (256, 1024, 0x47d3a23f08195d15),
+    "7410": (512, 1536, 0x9604c1979eeab4b5),
+    "7411": (512, 1536, 0xa6fa855e411dd555),
+    "7420": (256, 512, 0x7589a47ebeeea86d),
+    "7421": (256, 512, 0xa1d69b927d41a28d),
+    "7427": (512, 1536, 0xb1871c1f926cc6d5),
+    "7430": (256, 256, 0x73179affd0ed9531),
+    "7432": (256, 1024, 0xe09f26e63534dd75),
+    "7474": (540, 2142, 0x62949a2bb921a540),
+    "7486": (256, 1024, 0xb4f6a2048e139845),
+    "74125": (256, 512, 0x9a8414036166ee15),
+    "74126": (256, 512, 0x35679807b95e1db5),
+    "74138": (64, 512, 0x4874eb594c71b26d),
+    "74139": (64, 512, 0xa11f23095fe0e625),
+    "74151": (4096, 8192, 0x82fd772942dc5905),
+    "74153": (4096, 8192, 0xe0962355b0093725),
+    "74157": (1024, 4096, 0xdf9d44be2be3f365),
+    "74161": (561, 2805, 0xf077bac9355457a0),
+    "74160": (555, 2464, 0x7b6fb5be68d06d57),
+    "74162": (555, 2254, 0xd478233fb9ba170c),
+    "74163": (561, 2657, 0xb5a409e49d40c5ee),
+    "74164": (537, 4296, 0x6df6aad704e72341),
+    "74165": (555, 1110, 0xa6c022a44d83e3e6),
+    "74174": (533, 3198, 0xd4eeb5a91863df94),
+    "74175": (529, 4232, 0x4f14bebafea24aa7),
+    "74193": (580, 3480, 0x47ef7bcca7d0b2c7),
+    "74240": (1024, 4096, 0x7f4593647e0f94a5),
+    "74244": (1024, 4096, 0x220fa476fa80cfe5),
+    "74245": (512, 4096, 0xdeeee17707065625),
+    "74273": (537, 4296, 0xe645a4d939aed3ff),
+    "74373": (538, 3880, 0xbaf9ec583d3d1456),
+    "74374": (537, 3792, 0x5c2b2eb01d93d152),
+    "74393": (568, 4536, 0x627c5a310777e0d7),
+    "74541": (1024, 2048, 0x8c12902423ba33e5),
+    "74573": (538, 3896, 0x0e351ca0c243f1ac),
+    "74574": (537, 3920, 0x5d06e44de18e87ef),
+    "74595": (554, 4586, 0x69721985dbfb6bf5),
+    "7483": (512, 2560, 0xf7f7d0b76d8b3c3d),
+    "7485": (2048, 6144, 0x571f826f7d1114b5),
+    "7490": (560, 2072, 0x83bd027782a1743b),
+    "7493": (552, 2064, 0x20c71e4c3f28d60a),
+    "4001": (256, 1024, 0xcecb16b5fbac0ae5),
+    "4011": (256, 1024, 0x88d1e3ba18dc9485),
+    "4071": (256, 1024, 0x2c469fca26ef29c5),
+    "4081": (256, 1024, 0x40c841e6ffe776e5),
+    "4070": (256, 1024, 0xe847e4d74babe545),
+    "4093": (256, 1024, 0x88d1e3ba18dc9485),
+    "4013": (540, 2106, 0xa0e5d7fc90f99043),
+    "4017": (549, 6039, 0x0a2eae31cc7e5d82),
+    "4040": (4621, 55452, 0x006f24d5d8371bff),
+    "4049": (64, 384, 0x65872d8dfd8ab865),
+    "4050": (64, 384, 0x0b57060e268ada15),
+]
+if let xml = try? String(contentsOfFile: args[2]) {
+    var problems: [String] = [], modelled = 0
+    for (chip, entry) in Pinouts.logicNames.sorted(by: { $0.key < $1.key }) {
+        let items = entry.pins.split(separator: " ")
+        let names = items.map { String($0.split(separator: ":", maxSplits: 1).last ?? "") }
+        let roles = items.map { $0.first ?? "i" }
+        guard let model = LogicModels.model(for: chip, names: names) else { continue }
+        modelled += 1
+        guard let v = Pinouts.logicVectors(xml: xml, name: chip) else { problems.append("\(chip): no vectors"); continue }
+        let res = LogicModels.simulate(model, names: names, vectors: v.vectors)
+        var checks = 0, bad: [String] = []
+        for (vi, (vec, r)) in zip(v.vectors, res).enumerated() {
+            for (i, c) in vec.enumerated() where c == "L" || c == "H" {
+                guard let m = r[i] else { continue }
+                checks += 1
+                if m != (c == "H") { bad.append("v\(vi) pin \(i + 1) \(names[i]) db \(c)") }
+            }
+        }
+        if checks == 0 { problems.append("\(chip): no outputs checked") }
+        if !bad.isEmpty { problems.append("\(chip): " + bad.prefix(4).joined(separator: ", ")) }
+        guard let e = LogicModels.extended(chip: chip, names: names, roles: roles) else { problems.append("\(chip): no extended test"); continue }
+        let fp = LogicModels.fingerprint(e.vectors)
+        if let x = expectedExtended[chip] {
+            if x.0 != e.vectors.count || x.1 != e.checks || x.2 != fp {
+                problems.append("\(chip): extended \(e.vectors.count)/\(e.checks)/\(String(fp, radix: 16)) vs reference \(x.0)/\(x.1)/\(String(x.2, radix: 16))")
+            }
+        } else { problems.append("\(chip): no reference") }
+        let t = LogicTest(name: chip, pins: names.count, voltage: "5V", vectors: e.vectors)
+        if !t.problems().isEmpty { problems.append("\(chip): " + t.problems()[0]) }
+        if e.phases.map({ $0.range.count }).reduce(0, +) != e.vectors.count { problems.append("\(chip): phases don't cover the vectors") }
+    }
+    expect(problems.isEmpty && modelled == expectedExtended.count, "logic models agree with minipro's vectors (\(modelled) models)" + (problems.isEmpty ? "" : ": " + problems.prefix(10).joined(separator: "; ")))
+    let g = LogicModels.pins(for: "74132", xml: xml)
+    expect(g?.key == "7400", "74132 is tested with the 7400 model")
+    expect(LogicModels.pins(for: "74LS161", xml: xml)?.key == "74161" || LogicModels.pins(for: "74161", xml: xml)?.key == "74161", "74161 model found")
+    var all: [String] = [], have = 0
+    var from = xml.startIndex
+    while let r = xml.range(of: "<ic name=\"", range: from..<xml.endIndex), let e = xml.range(of: "\"", range: r.upperBound..<xml.endIndex) {
+        all += xml[r.upperBound..<e.lowerBound].split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        from = e.upperBound
+    }
+    for n in all where LogicModels.pins(for: n, xml: xml) != nil { have += 1 }
+    print("LOGICMODELS: \(have) of \(all.count) logic chip names have an exhaustive or sequence test")
+}
+
 print(failed ? "DBTEST FAILED" : "DBTEST OK")
 exit(failed ? 1 : 0)

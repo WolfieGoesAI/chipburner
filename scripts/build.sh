@@ -190,7 +190,7 @@ echo "::notice title=Chip search for 27C256::$NOTE"
 grep -q -i '27C256' <<<"$SEARCH" || { echo "ERROR: chip search returned nothing"; false; }
 
 log "Test: ChipBurner's database reader against the bundled database"
-xcrun swiftc -O -sdk "$SDK" "$ROOT/Sources/ChipDatabase.swift" "$ROOT/Sources/ChipCapabilities.swift" "$ROOT/Sources/DataFormats.swift" "$ROOT/Sources/BufferOps.swift" "$ROOT/Sources/ChipTests.swift" "$ROOT/Sources/Pinouts.swift" "$ROOT/tests/dbtest/main.swift" -o "$WORK/dbtest"
+xcrun swiftc -O -sdk "$SDK" "$ROOT/Sources/ChipDatabase.swift" "$ROOT/Sources/ChipCapabilities.swift" "$ROOT/Sources/DataFormats.swift" "$ROOT/Sources/BufferOps.swift" "$ROOT/Sources/ChipTests.swift" "$ROOT/Sources/Pinouts.swift" "$ROOT/Sources/LogicModels.swift" "$ROOT/Sources/LogicVectors.swift" "$ROOT/tests/dbtest/main.swift" -o "$WORK/dbtest"
 DBT="$("$WORK/dbtest" "$APP/Contents/Resources/minipro/infoic.xml" "$APP/Contents/Resources/minipro/logicic.xml" 2>&1)" || {
   echo "$DBT"
   X="$APP/Contents/Resources/minipro/infoic.xml"
@@ -236,7 +236,8 @@ diag() { DIAG+="### $1"$'\n'"$2"$'\n\n'; }
 diag "minipro source" "$MINIPRO_DESC"$'\n'"$("$APP/Contents/MacOS/minipro" --version 2>&1 | head -5)"
 diag "Test-related chip types" "$(grep -E '^(SRAM|DRAMLOGIC|LOGICNAMES|TL866A entries)' <<<"$DBT")"
 diag "Pinout coverage" "$(grep '^PINCOVER' <<<"$DBT")"
-diag "tl866a do_ic_test" "$(sed -n '/^static uint8_t \*do_ic_test/,/^}/p' "$WORK/src/minipro-git/src/tl866a.c" | head -80; grep -n 'vcc_logic\|LOGIC_VOLTAGE\|voltage=\|vcc_table\|"5V"\|3V3' "$WORK/src/minipro-git/src/"*.c | head -20 | cut -c1-200 | sed 's|.*/src/||')"
+diag "Logic models" "$(grep "^LOGICMODELS" <<<"$DBT")"
+diag "minipro vector parsing" "$(grep -n -i "vector" "$WORK/src/minipro-git/src/database.c" | head -40 | cut -c1-200)"
 diag "Fuses & Locks families" "$(grep -E '^(FL|FUSES)' <<<"$DBT")"
 printf '%s' "$DIAG" > "$ROOT/diag.txt"
 

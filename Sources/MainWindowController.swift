@@ -46,7 +46,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     private var eraseButton: NSButton!
     private lazy var configButton: NSButton = button("Fuses & Locks…", #selector(openConfigWindow(_:)))
     private lazy var chipTestButton: NSButton = button("Chip Test…", #selector(openChipTest(_:)))
-    private lazy var logicTestButton: NSButton = button("Logic Test", #selector(logicTest(_:)))
+    private lazy var logicTestButton: NSButton = button("Logic Test…", #selector(showLogicTestMenu(_:)))
     private let skipID = NSButton(checkboxWithTitle: "Skip chip ID check", target: nil, action: nil)
     private let allowSize = NSButton(checkboxWithTitle: "Allow file size mismatch", target: nil, action: nil)
     private let skipErase = NSButton(checkboxWithTitle: "Don't erase before programming", target: nil, action: nil)
@@ -563,7 +563,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         configButton.isEnabled = !isBusy && currentConfig != nil
         let testKind = chipDetails.map { $0.kind }
         logicTestButton.isEnabled = !isBusy && testKind == .logic
-        logicTestButton.toolTip = logicTestButton.isEnabled ? "Runs the logic test vectors for this chip."
+        logicTestButton.toolTip = logicTestButton.isEnabled ? "Standard Test runs minipro's test vectors once; Extended Test adds an exhaustive or full-sequence test and repeated runs."
             : "Logic Test works with logic chips (74xx, 40xx …). Select one with Search or Logic Ident."
         chipTestButton.isEnabled = !isBusy && (testKind == .sram || testKind == .memory) && (chipDetails?.codeSize ?? 0) > 0
         chipTestButton.toolTip = chipTestButton.isEnabled
@@ -1167,6 +1167,144 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         }
     }
 
+    @objc func showLogicTestMenu(_ sender: NSButton) {
+        let m = NSMenu()
+        m.addItem(withTitle: "Standard Test", action: #selector(logicTest(_:)), keyEquivalent: "").target = self
+        m.addItem(withTitle: "Extended Test…", action: #selector(extendedLogicTest(_:)), keyEquivalent: "").target = self
+        m.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
+    }
+
+    /// Extended Logic Test: an exhaustive test (combinational chips) or a long sequence test
+    /// (flip-flops, latches, counters, shift registers) generated from a working model of the chip,
+    /// with neighbour-pin patterns, then the standard vectors repeated a number of times.
+    @objc func extendedLogicTest(_ sender: Any?) {
+        guard requireChip(), let w = window, !isBusy else { return }
+        if let k = chipDetails?.kind, k != .logic {
+            showError("\(chip) isn't a logic chip.", "Logic Test works with 74xx and 40xx logic ICs from the logic database, e.g. 7400 or 4011.")
+            return
+        }
+        if logicicText == nil, let url = Minipro.shared.logicic { logicicText = try? String(contentsOf: url) }
+        guard let xml = logicicText, let standard = LogicTest.parseXML(xml, name: chip) else {
+            showError("\(chip) isn't in the logic database.", "Choose the chip with Search or Logic Ident.")
+            return
+        }
+        let name = chip
+        var ext: LogicModels.Extended?
+        var modelKey = ""
+        if let p = LogicModels.pins(for: name, xml: xml), p.names.count == standard.pins,
+           let e = LogicModels.extended(chip: p.key, names: p.names, roles: p.roles) {
+            ext = e
+            modelKey = p.key
+        }
+
+        let box = NSButton(checkboxWithTitle: "Exhaustive / sequence test", target: nil, action: nil)
+        let detail = NSTextField(wrappingLabelWithString: "")
+        detail.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        detail.textColor = .secondaryLabelColor
+        if let e = ext {
+            box.state = .on
+            let same = Pinouts.logicBase(name) == modelKey ? "" : " (uses the \(modelKey) model – same function and pinout)"
+            detail.stringValue = "\(e.vectors.count) test steps\(same): \(e.description). \(e.checks) output checks in all, worked out from a model of the chip."
+        } else {
+            box.state = .off
+            box.isEnabled = false
+            detail.stringValue = "ChipBurner has no working model of \(name) yet, so only the repeated standard test is available. Exhaustive and sequence tests cover the common gates, buffers, decoders, multiplexers, adders, comparators, flip-flops, latches, counters and shift registers."
+        }
+        let repeatPopup = NSPopUpButton(frame: .zero, pullsDown: false)
+        let counts = [0, 10, 25, 50, 100]
+        for c in counts { repeatPopup.addItem(withTitle: c == 0 ? "Don't repeat" : "\(c) times") }
+        let saved = UserDefaults.standard.integer(forKey: "logicRepeats")
+        repeatPopup.selectItem(at: counts.firstIndex(of: saved == 0 && UserDefaults.standard.object(forKey: "logicRepeats") == nil ? 10 : saved) ?? 1)
+        let repeatRow = NSStackView(views: [NSTextField(labelWithString: "Repeat the standard test:"), repeatPopup])
+        repeatRow.orientation = .horizontal
+        let note = NSTextField(wrappingLabelWithString: "Repeated runs catch chips that fail now and then (marginal or overheating parts). The TL866A tests at a fixed 5 V.")
+        note.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        note.textColor = .secondaryLabelColor
+        let stack = NSStackView(views: [box, detail, repeatRow, note])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 6
+        for v in [detail, note] { v.preferredMaxLayoutWidth = 360; v.widthAnchor.constraint(equalToConstant: 360).isActive = true }
+        stack.frame = NSRect(x: 0, y: 0, width: 360, height: stack.fittingSize.height)
+        let a = NSAlert()
+        a.messageText = "Extended Logic Test – \(name)"
+        a.informativeText = "Put the chip in the socket bottom-aligned with pin 1 at the lever end. Stop ends the test early."
+        a.accessoryView = stack
+        a.addButton(withTitle: "Start")
+        a.addButton(withTitle: "Cancel")
+        a.beginSheetModal(for: w) { [weak self] resp in
+            guard let self = self, resp == .alertFirstButtonReturn else { return }
+            let repeats = counts[max(0, repeatPopup.indexOfSelectedItem)]
+            UserDefaults.standard.set(repeats, forKey: "logicRepeats")
+            let useExt = box.state == .on ? ext : nil
+            if useExt == nil && repeats == 0 { return }
+            self.scanCancelled = false
+            var report: [String] = []
+            var failed = false
+            let finish: (Bool) -> Void = { [weak self] stopped in
+                guard let self = self else { return }
+                if stopped { report.append("Stopped before the end.") }
+                let text = report.joined(separator: "\n")
+                self.log("Extended logic test \(name):\n" + text)
+                if failed { self.showError("\(name) failed the extended test", text + "\n\nPress Log to see the vectors (failing pins are marked with “-”).") }
+                else if stopped { self.showInfo("Extended test of \(name) stopped", text) }
+                else { self.showInfo("\(name) passed the extended test", text) }
+            }
+            var runRepeats: ((Int, Int) -> Void)!
+            runRepeats = { [weak self] k, fails in
+                guard let self = self else { return }
+                if k > repeats {
+                    if repeats > 0 {
+                        report.append(fails == 0 ? "✓ Standard test: passed all \(repeats) runs." : "✗ Standard test: failed \(fails) of \(repeats) runs.")
+                        if fails > 0 { failed = true }
+                    }
+                    finish(false); return
+                }
+                if self.scanCancelled {
+                    report.append(fails == 0 ? "✓ Standard test: passed \(k - 1) of \(repeats) runs." : "✗ Standard test: failed \(fails) of \(k - 1) runs.")
+                    if fails > 0 { failed = true }
+                    finish(true); return
+                }
+                self.runJob("Logic test \(name) – run \(k) of \(repeats)", ["-p", name, "-T"]) { ok, output in
+                    let passed = ok && Self.failingVectorLines(output).isEmpty
+                    if !passed && !output.contains("Logic test failed") && Self.failingVectorLines(output).isEmpty {
+                        // minipro didn't get as far as testing (stopped, or the programmer went away)
+                        report.append("Standard test run \(k) didn't complete.")
+                        if !self.scanCancelled { failed = true }
+                        finish(self.scanCancelled); return
+                    }
+                    runRepeats(k + 1, fails + (passed ? 0 : 1))
+                }
+            }
+            guard let e = useExt else { runRepeats(1, 0); return }
+            let test = LogicTest(name: "CBX" + standard.safeName, pins: standard.pins, voltage: standard.voltage, vectors: e.vectors)
+            let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ChipBurner", isDirectory: true)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let url = dir.appendingPathComponent("extended-logicic.xml")
+            do { try test.xml().write(to: url, atomically: true, encoding: .utf8) } catch {
+                self.showError("Could not write the test file.", error.localizedDescription); return
+            }
+            self.runJob("Extended logic test \(name) (\(e.vectors.count) steps)", ["-p", test.safeName, "-T"], logicic: url) { ok, output in
+                let r = LogicTest.parseResult(output)
+                if r.passed && ok && r.failingVectors.isEmpty {
+                    report.append("✓ Exhaustive / sequence test: all \(e.vectors.count) steps (\(e.checks) output checks) passed.")
+                } else if !r.failingVectors.isEmpty {
+                    failed = true
+                    var byPhase: [String: Int] = [:]
+                    for v in r.failingVectors { byPhase[e.phase(ofVector: v), default: 0] += 1 }
+                    let parts = e.phases.compactMap { p in byPhase[p.name].map { "\($0) in \(p.name)" } }
+                    let first = r.failingVectors.prefix(8).map { String(format: "%04d", $0) }.joined(separator: ", ")
+                    report.append("✗ Exhaustive / sequence test: \(r.errors) wrong pin state(s) in \(r.failingVectors.count) of \(e.vectors.count) steps – " + parts.joined(separator: ", ") + ". First failing steps: \(first)\(r.failingVectors.count > 8 ? " …" : "").")
+                } else {
+                    report.append(self.scanCancelled ? "Exhaustive / sequence test stopped." : "✗ Exhaustive / sequence test didn't run – see the log for minipro's message.")
+                    if !self.scanCancelled { failed = true }
+                    finish(self.scanCancelled); return
+                }
+                runRepeats(1, 0)
+            }
+        }
+    }
+
     /// minipro marks a pin that didn't match with "-" right after the expected state. Only the vector
     /// rows ("0012: 0  L- X …") count – other output (messages, file paths) may contain hyphens too.
     /// minipro's own verdict wins when it says the test was successful.
@@ -1269,6 +1407,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     }
 
     @objc func stop(_ sender: Any?) {
+        if isBusy { scanCancelled = true }
         if isBusy && running == nil { scanCancelled = true; log("Stopping after the current chip…"); return }
         guard let p = running else { return }
         log("Stopping…")
@@ -1793,7 +1932,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         }
         walk(content)
         print("SMOKE window visible=\(w.isVisible) frame=\(NSStringFromRect(w.frame)) content=\(NSStringFromRect(content.frame)) buttons=\(buttons.count)")
-        for t in ["Read", "Stop", "Compare w Chip", "Compare w File…", "Redo", "H/W Test…", "Save…", "Open…", "Fuses & Locks…", "Chip Test…", "Chip Ident…", "Logic Ident…", "Chip Info", "Logic Test", "Auto…", "Voltages…", "Options…"] {
+        for t in ["Read", "Stop", "Compare w Chip", "Compare w File…", "Redo", "H/W Test…", "Save…", "Open…", "Fuses & Locks…", "Chip Test…", "Chip Ident…", "Logic Ident…", "Chip Info", "Logic Test…", "Auto…", "Voltages…", "Options…"] {
             if let r = buttons[t] { print(String(format: "SMOKE %@ x=%.0f..%.0f y=%.0f..%.0f", t, r.minX, r.maxX, r.minY, r.maxY)) }
             else { print("SMOKE missing button: \(t)") }
         }
