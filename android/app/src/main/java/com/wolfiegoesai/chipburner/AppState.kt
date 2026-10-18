@@ -60,7 +60,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
     val connectionNames = listOf("ZIF socket", "ICSP – power from programmer", "ICSP – board has its own power")
     private val connectionArgs: List<String> get() = when (connection) { 1 -> listOf("-i"); 2 -> listOf("-I"); else -> emptyList() }
 
-    fun setConnection(c: Int) {
+    fun chooseConnection(c: Int) {
         connection = c
         prefs.edit().putInt("connection", c).apply()
         addLog("Connection: ${connectionNames[c]}")

@@ -81,7 +81,7 @@ fun ChipScreen(state: AppState, files: FileActions, onSearch: () -> Unit, onShow
                     for ((i, name) in state.connectionNames.withIndex()) {
                         DropdownMenuItem(
                             text = { Text((if (state.connection == i) "✓  " else "     ") + name) },
-                            onClick = { connMenu = false; state.setConnection(i) },
+                            onClick = { connMenu = false; state.chooseConnection(i) },
                         )
                     }
                 }
