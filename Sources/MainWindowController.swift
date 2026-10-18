@@ -901,13 +901,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         var choices: [(String, IDMethod)] = [
             ("SPI flash (25-series), 8 pins", .spi(8)),
             ("SPI flash (25-series), 16-pin SOIC adapter", .spi(16)),
-            ("28-pin UV EPROM (27C64 to 27C512)", .eprom("AM27C256@DIP28")),
-            ("32-pin UV EPROM (27C010 to 27C080)", .eprom("AM27C010@DIP32")),
+            ("28-pin 27-series EPROM (27C64–27C512, W27C512)", .eprom("AM27C256@DIP28")),
+            ("32-pin 27-series EPROM (27C010–27C080, 27SF0x0)", .eprom("AM27C010@DIP32")),
         ]
         if !chip.isEmpty, chipDetails != nil, Self.isUVEPROM(chip) || chip.uppercased().hasPrefix("W27") {
             choices.append(("Same type as \(chip)", .eprom(chip)))
         }
-        let popup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 340, height: 26), pullsDown: false)
+        let popup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 380, height: 26), pullsDown: false)
         choices.forEach { popup.addItem(withTitle: $0.0) }
         let last = UserDefaults.standard.integer(forKey: "identifyChoice")
         if last < choices.count { popup.selectItem(at: last) }
