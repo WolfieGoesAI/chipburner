@@ -173,7 +173,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         chipField.widthAnchor.constraint(greaterThanOrEqualToConstant: 300).isActive = true
         let logic = logicTestButton
         let logicID = button("Logic Ident…", #selector(identifyLogic(_:)))
-        let hardware = button("Hardware…", #selector(hardwareMenu(_:)))
+        let hardware = button("H/W Test…", #selector(hwTest(_:)))
         // Two rows: Logic Ident under Chip Ident, Logic Test under Chip Test, Hardware under Chip Info.
         // A stretchable gap before the six chip buttons keeps them flush right (with Save… below).
         func gap() -> NSView {
@@ -759,7 +759,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     }
 
     /// Runs one minipro job with progress and logging; `done` gets success and the full output.
-    private func runJob(_ title: String, _ args: [String], logicic: URL? = nil, answer: String? = nil, then done: ((Bool, String) -> Void)? = nil) {
+    private func runJob(_ title: String, _ args: [String], logicic: URL? = nil, then done: ((Bool, String) -> Void)? = nil) {
         guard !isBusy else { return }
         isBusy = true
         progress.doubleValue = 0
@@ -767,7 +767,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         log("▶︎ \(title): minipro \(args.joined(separator: " "))")
         let percent = try? NSRegularExpression(pattern: "(\\d{1,3})%")
         var collected: [String] = []
-        running = Minipro.shared.run(args, logicic: logicic, answer: answer, onLine: { [weak self] line, isProgress in
+        running = Minipro.shared.run(args, logicic: logicic, onLine: { [weak self] line, isProgress in
             guard let self = self else { return }
             if isProgress {
                 self.setStatus(line)
@@ -792,7 +792,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             let all = collected.joined(separator: "\n")
             // Every job prints the programmer's firmware and serial number; keep the top line current.
             if let model = self.programmerModel, all.contains("Serial code:") {
-                self.programmerDetails = Minipro.programmerSummary(model: model, from: all)
+                self.showProgrammer(model: model, output: all)
             }
             done?(ok, all)
         })
@@ -801,22 +801,25 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
 
     // MARK: Actions
 
-    @objc func checkProgrammer(_ sender: Any?) {
+    @objc func checkProgrammer(_ sender: Any?) { detectProgrammer(then: nil) }
+
+    /// Finds the programmer: model from `minipro -k`, firmware and serial number from a device search
+    /// (which opens the programmer properly without touching the socket; the search term matches no chip).
+    /// `done` gets true when a programmer answered.
+    private func detectProgrammer(then done: ((Bool) -> Void)?) {
         guard !isBusy else { return }
         programmerLabel.stringValue = "Checking…"
         DispatchQueue.global(qos: .userInitiated).async {
             let r = Minipro.shared.runSync(["-k"])
-            // -k only names the model. A device search opens the programmer properly and prints its
-            // firmware and serial number ("Found TL866A 03.2.86 …", "Serial code: …") without
-            // touching the socket; the search term matches no chip.
             let info = r.status == 0 ? Minipro.shared.runSync(["-L", "CHIPBURNER-NO-SUCH-CHIP"]).output : ""
             DispatchQueue.main.async {
                 let lines = r.output.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
                     .filter { !$0.isEmpty && !$0.contains("overridden database") }
+                var found = false
                 if r.status == 0, let model = Minipro.shared.updateProgrammerType(from: r.output) {
+                    found = true
                     self.programmerModel = model
-                    self.programmerLabel.stringValue = model
-                    self.programmerDetails = Minipro.programmerSummary(model: model, from: info)
+                    self.showProgrammer(model: model, output: info)
                 } else {
                     let first = lines.first ?? "No answer"
                     self.programmerLabel.stringValue = r.status == 0 ? first : "Not found – \(first)"
@@ -824,7 +827,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
                 self.log("Programmer check:\n" + (r.output + "\n" + info).components(separatedBy: .newlines)
                     .filter { !$0.isEmpty && !$0.contains("overridden database") }.joined(separator: "\n"))
                 self.updateChipInfo()
+                done?(found)
             }
+        }
+    }
+
+    /// "TL866A v03.2.86" on the main window; model, serial and firmware kept for the H/W Test report.
+    private func showProgrammer(model: String, output: String) {
+        programmerDetails = Minipro.programmerSummary(model: model, from: output)
+        if let fw = Minipro.firmwareVersion(from: output) {
+            programmerLabel.stringValue = "\(model) v\(fw)"
+        } else if programmerLabel.stringValue == "Checking…" || !programmerLabel.stringValue.hasPrefix(model) {
+            programmerLabel.stringValue = model
         }
     }
 
@@ -1673,7 +1687,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
 
     /// Fills the window with example content so a build screenshot shows a realistic state.
     func prepareScreenshot() {
-        programmerLabel.stringValue = "TL866A"
+        programmerLabel.stringValue = "TL866A v03.2.86"
         selectChip("AM27C256@DIP28")
         var d = Data(repeating: 0xFF, count: 0x8000)
         let text = Array("ChipBurner example buffer – (C) 2026 – AM27C256 32K x 8 UV EPROM ".utf8)
@@ -1771,7 +1785,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         }
         walk(content)
         print("SMOKE window visible=\(w.isVisible) frame=\(NSStringFromRect(w.frame)) content=\(NSStringFromRect(content.frame)) buttons=\(buttons.count)")
-        for t in ["Read", "Stop", "Compare w Chip", "Compare w File…", "Redo", "Hardware…", "Save…", "Open…", "Fuses & Locks…", "Chip Test…", "Chip Ident…", "Logic Ident…", "Chip Info", "Logic Test", "Auto…", "Voltages…", "Options…"] {
+        for t in ["Read", "Stop", "Compare w Chip", "Compare w File…", "Redo", "H/W Test…", "Save…", "Open…", "Fuses & Locks…", "Chip Test…", "Chip Ident…", "Logic Ident…", "Chip Info", "Logic Test", "Auto…", "Voltages…", "Options…"] {
             if let r = buttons[t] { print(String(format: "SMOKE %@ x=%.0f..%.0f y=%.0f..%.0f", t, r.minX, r.maxX, r.minY, r.maxY)) }
             else { print("SMOKE missing button: \(t)") }
         }
@@ -1871,109 +1885,38 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         return NSRect(x: x, y: screen.minY, width: window.frame.width, height: screen.height)
     }
 
-    @objc func hardwareMenu(_ sender: Any?) {
+    /// H/W Test…: identifies the programmer (model, firmware, serial number) and then runs its own
+    /// self-test of the pin drivers and voltages (minipro -t), which needs an empty socket.
+    @objc func hwTest(_ sender: Any?) {
         guard let w = window, !isBusy else { return }
         let a = NSAlert()
-        a.messageText = programmerDetails.map { "Hardware: " + $0 } ?? "Hardware"
-        a.informativeText = """
-            Check Programmer finds the connected programmer and shows its model, firmware and serial number.
-
-            Test Programmer runs the programmer's own hardware self-test of its pin drivers and voltages. \
-            Take any chip out of the socket and disconnect any ICSP cable first.
-
-            Firmware Upgrade installs new firmware in the programmer from XGecu's firmware file.
-            """
-        a.addButton(withTitle: "Check Programmer")
-        a.addButton(withTitle: "Test Programmer")
-        a.addButton(withTitle: "Firmware Upgrade…")
-        a.addButton(withTitle: "Cancel")
-        a.beginSheetModal(for: w) { [weak self] resp in
-            guard let self = self else { return }
-            switch resp {
-            case .alertFirstButtonReturn: self.checkProgrammer(nil)
-            case .alertSecondButtonReturn: self.testProgrammer(nil)
-            case .alertThirdButtonReturn:
-                // Let this sheet close before the next one opens.
-                DispatchQueue.main.async { self.firmwareUpgrade(nil) }
-            default: break
-            }
-        }
-    }
-
-    /// minipro -F: writes new firmware into the programmer from XGecu's update file.
-    @objc func firmwareUpgrade(_ sender: Any?) {
-        guard let w = window, !isBusy else { return }
-        let fileNames = "TL866A / TL866CS: update.dat\nTL866II Plus: updateII.dat\nT48: updateT48.dat\nT56: updateT56.dat"
-        let intro = NSAlert()
-        intro.messageText = "Firmware Upgrade"
-        intro.informativeText = """
-            Choose the firmware file that comes with XGecu's own programmer software (it's in the program folder after installing it on a Windows PC, or inside the downloaded installer):
-
-            \(fileNames)
-
-            Before you start: connect only one programmer, take any chip out of the socket and unplug the ICSP cable. Don't unplug the programmer or quit ChipBurner while the upgrade runs.
-
-            If the programmer already has the newest firmware, you don't need to do this – Check Programmer shows the version it has.
-            """
-        intro.addButton(withTitle: "Choose File…")
-        intro.addButton(withTitle: "Cancel")
-        intro.beginSheetModal(for: w) { [weak self] resp in
-            guard let self = self, resp == .alertFirstButtonReturn else { return }
-            DispatchQueue.main.async {
-                let panel = NSOpenPanel()
-                panel.allowedFileTypes = ["dat"]
-                panel.allowsOtherFileTypes = true
-                panel.message = "Choose the programmer's firmware file (update.dat, updateII.dat, …)."
-                panel.beginSheetModal(for: w) { [weak self] r in
-                    guard let self = self, r == .OK, let url = panel.url else { return }
-                    let confirm = NSAlert()
-                    confirm.alertStyle = .critical
-                    confirm.messageText = "Install the firmware from \(url.lastPathComponent)?"
-                    confirm.informativeText = "The programmer will restart during the upgrade. Keep it connected until ChipBurner says the upgrade has finished. If it's interrupted, the programmer starts in its bootloader and the upgrade can be run again."
-                    confirm.addButton(withTitle: "Upgrade Firmware")
-                    confirm.addButton(withTitle: "Cancel")
-                    confirm.beginSheetModal(for: w) { [weak self] c in
-                        guard let self = self, c == .alertFirstButtonReturn else { return }
-                        // minipro asks "continue with firmware update? y/n" – already confirmed above.
-                        self.runJob("Firmware upgrade", ["-F", url.path], answer: "y") { [weak self] ok, output in
-                            guard let self = self else { return }
-                            let lines = output.components(separatedBy: .newlines)
-                                .filter { !$0.isEmpty && !$0.contains("overridden database") }
-                            if ok {
-                                self.showInfo("Firmware upgrade finished", lines.suffix(8).joined(separator: "\n"))
-                                self.checkProgrammer(nil)
-                            } else {
-                                self.showError("Firmware upgrade failed", lines.suffix(10).joined(separator: "\n") + "\n\nThe full output is in the Log. If the programmer now starts in its bootloader, run the upgrade again.")
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    /// minipro -t: the programmer's hardware self-test (needs an empty socket).
-    @objc func testProgrammer(_ sender: Any?) {
-        guard let w = window, !isBusy else { return }
-        let a = NSAlert()
-        a.messageText = "Is the socket empty?"
-        a.informativeText = "The self-test drives every socket pin and switches the programming voltages. Remove any chip from the ZIF socket and unplug the ICSP cable before you start."
-        a.addButton(withTitle: "Start Self-Test")
+        a.messageText = "Test the programmer?"
+        a.informativeText = "ChipBurner first checks which programmer is connected (model, firmware and serial number), then runs the programmer's own self-test, which drives every socket pin and switches the programming voltages.\n\nTake any chip out of the ZIF socket and unplug the ICSP cable before you start."
+        a.addButton(withTitle: "Start Test")
         a.addButton(withTitle: "Cancel")
         a.beginSheetModal(for: w) { [weak self] resp in
             guard let self = self, resp == .alertFirstButtonReturn else { return }
-            self.runJob("Programmer self-test", ["-t"]) { [weak self] ok, output in
+            self.setStatus("Checking the programmer…")
+            self.detectProgrammer { [weak self] found in
                 guard let self = self else { return }
-                let lines = output.components(separatedBy: .newlines)
-                    .map { $0.trimmingCharacters(in: .whitespaces) }
-                    .filter { !$0.isEmpty && !$0.contains("overridden database") }
-                let problems = lines.filter { $0.range(of: "error|fail|short|overcurrent|bad", options: [.regularExpression, .caseInsensitive]) != nil }
-                let summary = lines.suffix(25).joined(separator: "\n")
-                if ok && problems.isEmpty {
-                    self.showInfo("Self-test passed", summary.isEmpty ? "The programmer reported no problems." : summary)
-                } else {
-                    self.showError(ok ? "Self-test reported problems" : "Self-test didn't complete",
-                                   (problems.isEmpty ? summary : problems.joined(separator: "\n")) + "\n\nThe full output is in the Log.")
+                guard found else {
+                    self.showError("No programmer found", "Check the USB cable and that the programmer's LED is on, then try again. The Log has minipro's answer.")
+                    return
+                }
+                let who = self.programmerDetails ?? self.programmerLabel.stringValue
+                self.runJob("Programmer self-test", ["-t"]) { [weak self] ok, output in
+                    guard let self = self else { return }
+                    let lines = output.components(separatedBy: .newlines)
+                        .map { $0.trimmingCharacters(in: .whitespaces) }
+                        .filter { !$0.isEmpty && !$0.contains("overridden database") }
+                    let problems = lines.filter { $0.range(of: "error|fail|short|overcurrent|bad", options: [.regularExpression, .caseInsensitive]) != nil }
+                    let summary = lines.suffix(25).joined(separator: "\n")
+                    if ok && problems.isEmpty {
+                        self.showInfo("H/W Test passed", "\(who)\n\nThe self-test reported no problems.\n\n" + summary)
+                    } else {
+                        self.showError(ok ? "H/W Test found problems" : "The self-test didn't complete",
+                                       "\(who)\n\n" + (problems.isEmpty ? summary : problems.joined(separator: "\n")) + "\n\nThe full output is in the Log.")
+                    }
                 }
             }
         }

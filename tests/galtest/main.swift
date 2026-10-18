@@ -375,6 +375,7 @@ do {
 }
 let progOut = "Found TL866A 03.2.86 (0x256)\nDevice code: 52313455\nSerial code: 227631BEA779A714A8A4674B\nUSB speed: 12Mbps (USB 1.1)\n"
 let summary = Minipro.programmerSummary(model: "TL866A", from: progOut)
+if Minipro.firmwareVersion(from: progOut) == "03.2.86" { vecPassed += 1; print("ok   firmware version") } else { vecFailed += 1; print("FAIL firmware version") }
 if summary == "TL866A – Serial 227631BEA779A714A8A4674B – Firmware 03.2.86" { vecPassed += 1; print("ok   programmer summary") }
 else { vecFailed += 1; print("FAIL programmer summary: \(summary)") }
 print("galtest vectors: \(vecPassed) passed, \(vecFailed) failed")

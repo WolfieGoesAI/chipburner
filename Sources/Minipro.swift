@@ -30,6 +30,13 @@ final class Minipro {
     }
     /// "TL866A – Serial 227631… – Firmware 03.2.86" from `minipro -k` output
     /// ("Found TL866A 03.2.86 (0x256)" … "Serial code: 227631…").
+    /// "03.2.86" from "Found TL866A 03.2.86 (0x256)".
+    static func firmwareVersion(from output: String) -> String? {
+        guard let re = try? NSRegularExpression(pattern: "Found\\s+\\S+\\s+(\\d+\\.\\d+\\.\\d+)"),
+              let m = re.firstMatch(in: output, range: NSRange(location: 0, length: (output as NSString).length)) else { return nil }
+        return (output as NSString).substring(with: m.range(at: 1))
+    }
+
     static func programmerSummary(model: String, from output: String) -> String {
         var parts = [model]
         func match(_ pattern: String) -> String? {
@@ -105,7 +112,7 @@ final class Minipro {
     /// `onLine(text, isProgress)` is called on the main thread; progress lines are the ones
     /// minipro rewrites in place with a carriage return.
     @discardableResult
-    func run(_ args: [String], logicic: URL? = nil, answer: String? = nil,
+    func run(_ args: [String], logicic: URL? = nil,
              onLine: @escaping (String, Bool) -> Void,
              completion: @escaping (Int32) -> Void) -> Process? {
         guard let p = makeProcess(args, includeDB: true, logicic: logicic) else {
@@ -113,14 +120,7 @@ final class Minipro {
             completion(-1)
             return nil
         }
-        // `answer` is typed into minipro's own question (e.g. "y" for its firmware-update prompt).
-        var input: Pipe?
-        if answer != nil { input = Pipe(); p.standardInput = input }
         guard Minipro.stream(p, onLine: onLine, completion: completion) else { return nil }
-        if let a = answer, let input = input {
-            input.fileHandleForWriting.write((a + "\n").data(using: .utf8)!)
-            input.fileHandleForWriting.closeFile()
-        }
         return p
     }
 

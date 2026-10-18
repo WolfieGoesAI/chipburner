@@ -125,9 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let chipItem = NSMenuItem(); main.addItem(chipItem)
         let chipMenu = NSMenu(title: "Chip")
-        chipMenu.addItem(withTitle: "Check Programmer", action: #selector(MainWindowController.checkProgrammer(_:)), keyEquivalent: "k")
-        chipMenu.addItem(withTitle: "Test Programmer (Self-Test)…", action: #selector(MainWindowController.testProgrammer(_:)), keyEquivalent: "")
-        chipMenu.addItem(withTitle: "Firmware Upgrade…", action: #selector(MainWindowController.firmwareUpgrade(_:)), keyEquivalent: "")
+        chipMenu.addItem(withTitle: "H/W Test…", action: #selector(MainWindowController.hwTest(_:)), keyEquivalent: "k")
         chipMenu.addItem(withTitle: "Search Chips…", action: #selector(MainWindowController.searchChips(_:)), keyEquivalent: "f")
         chipMenu.addItem(withTitle: "Chip Ident…", action: #selector(MainWindowController.identifyChip(_:)), keyEquivalent: "i")
         chipMenu.addItem(withTitle: "Fuses, User ID & Lock Bits…", action: #selector(MainWindowController.openConfigWindow(_:)), keyEquivalent: "u")
