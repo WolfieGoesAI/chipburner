@@ -251,7 +251,7 @@ private fun ProgramSheet(state: AppState, onDismiss: () -> Unit) {
                 OutlineButton("Cancel", Modifier.weight(1f).height(56.dp)) { onDismiss() }
                 PrimaryButton("Program", modifier = Modifier.weight(1f)) { onDismiss(); state.program() }
             }
-            Text("Keep the phone awake and the cable connected until it finishes.", fontFamily = Sans, fontSize = 12.sp, color = C.text3)
+            Text("Keep the cable connected until it finishes.", fontFamily = Sans, fontSize = 12.sp, color = C.text3)
         }
     }
 }
