@@ -1,0 +1,85 @@
+name: Build ChipBurner Android
+
+on:
+  push:
+    branches: [main]
+    paths: ['android/**', '.github/workflows/android.yml']
+  workflow_dispatch:
+    inputs:
+      minipro_ref:
+        description: minipro tag or branch
+        default: 'main'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Build minipro and libusb for Android
+        env:
+          MINIPRO_REF: ${{ github.event.inputs.minipro_ref || 'main' }}
+          ANDROID_API: '26'
+          DIAG: ${{ github.workspace }}/android-diag.txt
+        run: bash android/native/build-native.sh
+
+      - name: Fonts (IBM Plex, OFL)
+        run: |
+          set -e
+          mkdir -p /tmp/fonts && cd /tmp/fonts
+          npm pack @ibm/plex-sans@1 @ibm/plex-mono@1 >/dev/null 2>&1 || npm pack @ibm/plex@6 >/dev/null
+          for f in *.tgz; do mkdir -p "${f%.tgz}"; tar xzf "$f" -C "${f%.tgz}"; done
+          D="$GITHUB_WORKSPACE/android/app/src/main/res/font"
+          mkdir -p "$D"
+          pick() { F="$(find /tmp/fonts -type f -name "$1" -path '*ttf*' | head -1)"; [ -n "$F" ] || F="$(find /tmp/fonts -type f -name "$1" | head -1)"; [ -n "$F" ] || { echo "missing $1"; exit 1; }; cp "$F" "$D/$2"; }
+          pick IBMPlexSans-Regular.ttf plex_sans_regular.ttf
+          pick IBMPlexSans-Medium.ttf plex_sans_medium.ttf
+          pick IBMPlexSans-SemiBold.ttf plex_sans_semibold.ttf
+          pick IBMPlexMono-Regular.ttf plex_mono_regular.ttf
+          pick IBMPlexMono-SemiBold.ttf plex_mono_semibold.ttf
+          ls -la "$D"
+
+      - name: Build APK
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+          APP_VERSION: 0.1.${{ github.run_number }}
+        run: |
+          set -o pipefail
+          export BUILD_DATE="$(date -u +%Y-%m-%d)"
+          if ! gradle -p android assembleRelease --console=plain 2>&1 | tee gradle.log; then
+            { echo "### Gradle errors"; grep -E '^e: |error:|What went wrong|Could not|> ' gradle.log | head -80; } >> android-diag.txt
+            exit 1
+          fi
+          mkdir -p dist
+          cp android/app/build/outputs/apk/release/app-release.apk "dist/ChipBurner-0.1.${BUILD_NUMBER}.apk"
+          { echo "### APK"; ls -la dist; unzip -l dist/*.apk | grep -E 'lib/|assets/minipro' ; } >> android-diag.txt
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ChipBurner-Android
+          path: dist/*.apk
+
+      - name: Diagnostics
+        if: always()
+        run: |
+          [ -f android-diag.txt ] || exit 0
+          python3 - <<'PY'
+          d = open("android-diag.txt", encoding="utf-8", errors="replace").read()
+          size = 3500
+          for k, c in enumerate([d[i:i + size] for i in range(0, len(d), size)][:20]):
+              c = c.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+              print(f"::notice title=diag part {k}::{c}")
+          PY

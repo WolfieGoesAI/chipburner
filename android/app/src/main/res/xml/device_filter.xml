@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- TL866A / TL866CS -->
+    <usb-device vendor-id="1240" product-id="57628" />
+    <!-- TL866II+ / T48 -->
+    <usb-device vendor-id="42086" product-id="2643" />
+</resources>

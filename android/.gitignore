@@ -1,0 +1,7 @@
+build/
+.gradle/
+build-native/
+app/src/main/jniLibs/
+app/src/main/assets/minipro/
+app/src/main/res/font/*.ttf
+local.properties
