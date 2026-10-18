@@ -39,7 +39,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -54,7 +56,9 @@ import kotlinx.coroutines.withContext
 @Composable
 fun SearchScreen(state: AppState, initialKind: String? = null, onClose: () -> Unit, onPick: (String) -> Unit) {
     val startLogic = initialKind == "LOGIC" && state.chipInfo?.kind != ChipInfo.Kind.LOGIC
-    var query by rememberSaveable { mutableStateOf(if (startLogic) "74" else state.chip.substringBefore('@')) }
+    val initial = if (startLogic) "74" else state.chip.substringBefore('@')
+    var field by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue(initial, TextRange(initial.length))) }
+    val query = field.text
     var kind by rememberSaveable { mutableStateOf(initialKind) }
     var dipOnly by rememberSaveable { mutableStateOf(false) }
     var results by remember { mutableStateOf<List<ChipInfo>>(emptyList()) }
@@ -79,7 +83,7 @@ fun SearchScreen(state: AppState, initialKind: String? = null, onClose: () -> Un
                 Icon(Icons.Default.Search, contentDescription = null, tint = C.text2, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.size(10.dp))
                 BasicTextField(
-                    value = query, onValueChange = { query = it }, singleLine = true,
+                    value = field, onValueChange = { field = it }, singleLine = true,
                     textStyle = TextStyle(fontFamily = Mono, fontSize = 16.sp, color = C.text),
                     cursorBrush = SolidColor(C.amber),
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Search),
