@@ -48,6 +48,7 @@ shot 1-chip
 tap_text "Search" | tee -a "$OUT"; sleep 2
 adb shell input text 27C256; sleep 3
 shot 2-search
+adb shell input keyevent 111; sleep 2
 tap_text "AM27C256" | tee -a "$OUT"; sleep 2
 shot 3-chosen
 tap_text "Info" | tee -a "$OUT"; sleep 8
