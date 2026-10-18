@@ -919,8 +919,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
 
             SPI flash is read at 3.3 V with the standard JEDEC ID command. 1.8 V chips need a 1.8 V adapter.
 
-            UV EPROMs are read the EPROM way, with about 12 V on pin A9. Never use this with EEPROMs or other \
-            chip types – they aren't made for that voltage and can be damaged. Old NMOS EPROMs have no ID.
+            27-series EPROMs are read the EPROM way, with about 12 V on pin A9. That includes the electrically \
+            erasable 27-series parts (Winbond W27C/W27E, SST 27SF), which are made for it. Never use it with \
+            28-series EEPROMs, flash, microcontrollers or other chip types – they aren't made for that voltage \
+            and can be damaged. Old NMOS EPROMs have no ID.
             """
         a.accessoryView = popup
         a.addButton(withTitle: "Read ID")
@@ -935,7 +937,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             case .eprom(let ref):
                 if !self.chip.isEmpty, Self.isEEPROM(self.chip) {
                     self.showError("The EPROM ID read can't be used with \(self.chip).",
-                                   "It puts about 12 V on pin A9. EEPROMs aren't made for that and can be damaged. Choose the chip with Search instead, and use Skip chip ID check in Settings if it has no ID in the database.")
+                                   "It puts about 12 V on pin A9. 28-series EEPROMs aren't made for that and can be damaged. Choose the chip with Search instead, and use Skip chip ID check in Options if it has no ID in the database.")
                     return
                 }
                 self.runIdentify(reference: ref)
