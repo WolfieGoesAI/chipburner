@@ -209,7 +209,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         let autoBurn = button("Auto…", #selector(autoBurn(_:)))
         stopButton = button("Stop", #selector(stop(_:)))
         actionButtons = [read, blank, program, verify, erase, autoBurn, logic, logicID]
-        let jedButton = button("JED…", #selector(showPLDMenu(_:)))
+        let jedButton = button("PLD…", #selector(showPLDMenu(_:)))
         let openButton = button("Open…", #selector(openFile(_:)))
         let saveHex = button("Save…", #selector(saveFile(_:)))
         // Stop follows Auto…; the file buttons sit at the right end of the same row.
