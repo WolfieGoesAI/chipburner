@@ -97,7 +97,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         }
         // The green button zooms (to full screen height) instead of entering full-screen mode.
         window.collectionBehavior.insert(.fullScreenNone)
-        chipField.stringValue = UserDefaults.standard.string(forKey: "lastChip") ?? ""
+        chipField.stringValue = Self.cleanChipName(UserDefaults.standard.string(forKey: "lastChip") ?? "")
         updateBufferViews()
         updateEnabledState()
         updateChipInfo()
@@ -374,7 +374,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
 
     // MARK: Helpers
 
-    private var chip: String { chipField.stringValue.trimmingCharacters(in: .whitespaces) }
+    /// minipro's chip list marks chips read with a special routine "(custom)"; the name itself has no suffix.
+    private var chip: String { Self.cleanChipName(chipField.stringValue) }
+
+    static func cleanChipName(_ s: String) -> String {
+        s.replacingOccurrences(of: "(custom)", with: "", options: .caseInsensitive).trimmingCharacters(in: .whitespaces)
+    }
 
     private var chipDetails: ChipInfo? {
         ChipDatabase.shared.isLoaded ? ChipDatabase.shared.info(for: chip, programmer: Minipro.shared.programmerType) : nil
@@ -842,7 +847,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         }
     }
 
-    private func selectChip(_ name: String) {
+    private func selectChip(_ raw: String) {
+        let name = Self.cleanChipName(raw)
         chipField.stringValue = name
         UserDefaults.standard.set(name, forKey: "lastChip")
         log("Chip selected: \(name)")

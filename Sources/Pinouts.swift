@@ -107,6 +107,14 @@ enum Pinouts {
         if flash { return flashPinout(pins: pins, size: size) }
         if eeprom { return eepromPinout(pins: pins, size: size) }
         if eprom { return epromPinout(pins: pins, size: size) }
+        if has("2364") && pins == 24 && size == 8192 {
+            // 24-pin 8K mask ROM (NEC µPD2364, MOS/Commodore 2364): 2716 core with A12 on 18, A11 on 21, CS on 20.
+            var p = base24(); set(&p, [18: "A12", 20: "CS", 21: "A11"])
+            return ChipPinout(title: "2364 mask ROM (8K × 8)", pins: p, notes: [
+                "Mask ROM: read-only, it can't be erased or programmed.",
+                "The chip-select level on pin 20 was set when the ROM was made (active low on most). If a read gives all FF or one value, the ROM may need CS high.",
+                "Not pin-compatible with a 2764 (28 pins); to replace it with an EPROM use a 2364 adapter."])
+        }
         return nil
     }
 
