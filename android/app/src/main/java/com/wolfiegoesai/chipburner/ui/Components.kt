@@ -60,12 +60,13 @@ fun PrimaryButton(text: String, icon: Int? = null, enabled: Boolean = true, modi
 }
 
 @Composable
-fun TileButton(text: String, modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit) {
+fun TileButton(text: String, modifier: Modifier = Modifier, enabled: Boolean = true, accent: Boolean = false, onClick: () -> Unit) {
     Button(
         onClick = onClick, enabled = enabled, shape = RoundedCornerShape(16.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = C.raised, contentColor = C.text, disabledContainerColor = C.card, disabledContentColor = C.text3),
+        colors = if (accent) ButtonDefaults.buttonColors(containerColor = C.amber, contentColor = C.onAmber, disabledContainerColor = C.amberDim, disabledContentColor = Color(0xFFA38A63))
+        else ButtonDefaults.buttonColors(containerColor = C.raised, contentColor = C.text, disabledContainerColor = C.card, disabledContentColor = C.text3),
         modifier = modifier.height(56.dp),
-    ) { Text(text, fontSize = 15.sp, fontWeight = FontWeight.Medium, fontFamily = Sans) }
+    ) { Text(text, fontSize = 15.sp, fontWeight = if (accent) FontWeight.SemiBold else FontWeight.Medium, fontFamily = Sans) }
 }
 
 @Composable

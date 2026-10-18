@@ -52,9 +52,10 @@ import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun SearchScreen(state: AppState, onClose: () -> Unit, onPick: (String) -> Unit) {
-    var query by rememberSaveable { mutableStateOf(state.chip.substringBefore('@').ifEmpty { "" }) }
-    var kind by rememberSaveable { mutableStateOf<String?>(null) }
+fun SearchScreen(state: AppState, initialKind: String? = null, onClose: () -> Unit, onPick: (String) -> Unit) {
+    val startLogic = initialKind == "LOGIC" && state.chipInfo?.kind != ChipInfo.Kind.LOGIC
+    var query by rememberSaveable { mutableStateOf(if (startLogic) "74" else state.chip.substringBefore('@')) }
+    var kind by rememberSaveable { mutableStateOf(initialKind) }
     var dipOnly by rememberSaveable { mutableStateOf(false) }
     var results by remember { mutableStateOf<List<ChipInfo>>(emptyList()) }
     val focus = remember { FocusRequester() }

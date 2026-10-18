@@ -51,6 +51,7 @@ enum class Tab(val label: String, val icon: Int) {
 fun ChipBurnerApp(state: AppState) {
     var tab by rememberSaveable { mutableStateOf(Tab.CHIP) }
     var searching by rememberSaveable { mutableStateOf(false) }
+    var searchKind by rememberSaveable { mutableStateOf<String?>(null) }
     val context = LocalContext.current
 
     val openLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -76,7 +77,7 @@ fun ChipBurnerApp(state: AppState) {
 
     if (searching) {
         BackHandler { searching = false }
-        SearchScreen(state, onClose = { searching = false }, onPick = { state.selectChip(it); searching = false })
+        SearchScreen(state, initialKind = searchKind, onClose = { searching = false }, onPick = { state.selectChip(it); searching = false })
     } else {
         Scaffold(
             containerColor = C.ground,
@@ -101,9 +102,9 @@ fun ChipBurnerApp(state: AppState) {
         ) { pad ->
             Box(Modifier.fillMaxSize().padding(pad).statusBarsPadding()) {
                 when (tab) {
-                    Tab.CHIP -> ChipScreen(state, files, onSearch = { searching = true }, onShowBuffer = { tab = Tab.BUFFER })
+                    Tab.CHIP -> ChipScreen(state, files, onSearch = { searchKind = null; searching = true }, onShowBuffer = { tab = Tab.BUFFER })
                     Tab.BUFFER -> BufferScreen(state, files)
-                    Tab.TEST -> TestScreen(state, onSearch = { searching = true })
+                    Tab.TEST -> TestScreen(state, onSearch = { searchKind = "LOGIC"; searching = true })
                     Tab.LOG -> LogScreen(state)
                 }
             }

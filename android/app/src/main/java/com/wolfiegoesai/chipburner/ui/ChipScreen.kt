@@ -5,8 +5,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -50,7 +48,6 @@ import com.wolfiegoesai.chipburner.ChipInfo
 import com.wolfiegoesai.chipburner.DataFormats
 import com.wolfiegoesai.chipburner.UsbProgrammer
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ChipScreen(state: AppState, files: FileActions, onSearch: () -> Unit, onShowBuffer: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
@@ -112,7 +109,12 @@ fun ChipScreen(state: AppState, files: FileActions, onSearch: () -> Unit, onShow
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                PrimaryButton("Read chip", icon = com.wolfiegoesai.chipburner.R.drawable.ic_read, enabled = canWork) { state.readChip() }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    TileButton("Read", Modifier.weight(1f), enabled = canWork, accent = true) { state.readChip() }
+                    TileButton("Auto program…", Modifier.weight(1f), enabled = canWork) {
+                        if (state.buffer.isEmpty()) state.message = "The buffer is empty" to "Open a file or read a chip first." else state.autoProgram()
+                    }
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     TileButton("Program…", Modifier.weight(1f), enabled = canWork) {
                         if (state.buffer.isEmpty()) state.message = "The buffer is empty" to "Open a file or read a chip first." else confirmProgram = true
@@ -145,11 +147,6 @@ fun ChipScreen(state: AppState, files: FileActions, onSearch: () -> Unit, onShow
                 }
             }
 
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Tag("ZIF socket")
-                Tag("Options: ${state.optionsSummary}") { showOptions = true }
-                TileButtonSmall("Auto program…", enabled = canWork) { if (state.buffer.isEmpty()) state.message = "The buffer is empty" to "Open a file or read a chip first." else state.autoProgram() }
-            }
         }
     }
 
@@ -170,11 +167,6 @@ fun ChipScreen(state: AppState, files: FileActions, onSearch: () -> Unit, onShow
     if (confirmProgram) ProgramSheet(state, onDismiss = { confirmProgram = false })
     if (showOptions) OptionsDialog(state) { showOptions = false }
     if (showAbout) AboutDialog(state) { showAbout = false }
-}
-
-@Composable
-private fun TileButtonSmall(text: String, enabled: Boolean, onClick: () -> Unit) {
-    OutlineButton(text, enabled = enabled, onClick = onClick)
 }
 
 @Composable
