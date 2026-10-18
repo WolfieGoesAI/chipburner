@@ -23,7 +23,7 @@ say "### install and start"
 adb install -r "$APK" 2>&1 | tail -1 | tee -a "$OUT"
 adb logcat -c
 adb shell am start -W -n com.wolfiegoesai.chipburner/.MainActivity 2>&1 | tail -3 | tee -a "$OUT"
-sleep 20
+sleep 30
 shot() { adb shell screencap -p /sdcard/s.png && adb pull /sdcard/s.png "shots/$1.png" >/dev/null; }
 tap_text() {
   adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1

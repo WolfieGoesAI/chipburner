@@ -128,27 +128,35 @@ class ChipDb(private val infoic: File, private val logicic: File) {
                     if (end < 0) { line = line.substring(0, start); inComment = true; break }
                     line = line.substring(0, start) + line.substring(end + 3)
                 }
-                if (!collecting) {
-                    val d = line.indexOf("<database")
-                    if (d >= 0) attrRe.find(line, d)?.let { if (it.groupValues[1] == "type") database = it.groupValues[2] }
-                    val i = line.indexOf("<ic ").takeIf { it >= 0 } ?: line.indexOf("<ic\t").takeIf { it >= 0 }
-                        ?: if (line.trimEnd().endsWith("<ic")) line.lastIndexOf("<ic") else -1
-                    if (i < 0) continue
-                    collecting = true
-                    tag.setLength(0)
-                    line = line.substring(i)
+                // tags of interest: <database …> and <ic …>; attributes may run over several lines,
+                // and several tags may share a line
+                while (line.isNotEmpty()) {
+                    if (!collecting) {
+                        val start = tagStart.find(line) ?: break
+                        collecting = true
+                        tag.setLength(0)
+                        line = line.substring(start.range.first)
+                    }
+                    val close = line.indexOf('>')
+                    if (close < 0) {
+                        tag.append(line).append(' ')
+                        break
+                    }
+                    tag.append(line, 0, close)
+                    line = line.substring(close + 1)
+                    collecting = false
+                    val text = tag.toString()
+                    if (text.startsWith("<database")) {
+                        attrRe.findAll(text).firstOrNull { it.groupValues[1] == "type" }?.let { database = it.groupValues[2] }
+                    } else {
+                        addEntry(text, if (isLogic) "LOGIC" else database, isLogic)
+                    }
                 }
-                val close = line.indexOf('>')
-                if (close < 0) {
-                    tag.append(line).append(' ')
-                    continue
-                }
-                tag.append(line, 0, close)
-                collecting = false
-                addEntry(tag.toString(), if (isLogic) "LOGIC" else database, isLogic)
             }
         }
     }
+
+    private val tagStart = Regex("<(database|ic)(\\s|$)")
 
     private fun addEntry(tag: String, database: String, isLogic: Boolean) {
         val a = HashMap<String, String>()
