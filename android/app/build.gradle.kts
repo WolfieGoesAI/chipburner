@@ -56,7 +56,6 @@ android {
     packaging {
         jniLibs { useLegacyPackaging = true }
     }
-    androidResources { noCompress += listOf("xml") }
 }
 
 dependencies {

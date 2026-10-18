@@ -11,7 +11,7 @@ on:
         default: 'main'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -73,6 +73,38 @@ jobs:
         with:
           name: ChipBurner-Android
           path: dist/*.apk
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Emulator smoke test
+        continue-on-error: true
+        timeout-minutes: 20
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: bash android/tests/emulator-test.sh
+
+      - name: Publish emulator screenshots
+        if: always() && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        run: |
+          [ -d shots ] || exit 0
+          [ -f android-emulator.txt ] && { echo "### emulator"; cat android-emulator.txt; } >> android-diag.txt
+          mkdir -p /tmp/ashots && cp shots/*.png /tmp/ashots/ 2>/dev/null; cp android-emulator.txt /tmp/ashots/ 2>/dev/null
+          cd /tmp/ashots
+          git init -q -b android-screenshots
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Android screenshots of ${GITHUB_SHA::7}"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" android-screenshots
 
       - name: Diagnostics
         if: always()
