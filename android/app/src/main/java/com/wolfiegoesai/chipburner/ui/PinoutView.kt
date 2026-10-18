@@ -135,7 +135,7 @@ private fun PlccView(p: ChipPinout) {
         Row { for (k in top) PlccNum(k, highlight = k == 1) }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column { for (k in left) PlccNum(k) }
-            Box(Modifier.size(width = 7 * 30.dp, height = 9 * 22.dp).background(C.raised, RoundedCornerShape(4.dp)).border(1.5.dp, C.line, RoundedCornerShape(4.dp)), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(width = 210.dp, height = 198.dp).background(C.raised, RoundedCornerShape(4.dp)).border(1.5.dp, C.line, RoundedCornerShape(4.dp)), contentAlignment = Alignment.Center) {
                 Text("PLCC32\ntop view", fontFamily = Sans, fontSize = 12.sp, color = C.text3, textAlign = TextAlign.Center)
             }
             Column { for (k in right) PlccNum(k) }
