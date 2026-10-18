@@ -238,6 +238,7 @@ diag "Test-related chip types" "$(grep -E '^(SRAM|DRAMLOGIC|LOGICNAMES|TL866A en
 diag "Pinout coverage" "$(grep '^PINCOVER' <<<"$DBT")"
 diag "Logic models" "$(grep "^LOGICMODELS" <<<"$DBT")"
 diag "minipro vector parsing" "$(grep -n -i "vector" "$WORK/src/minipro-git/src/database.c" | head -40 | cut -c1-200)"
+diag "2364 entries" "$(grep -n -i -B2 -A14 "2364" "$APP/Contents/Resources/minipro/infoic.xml" | head -120 | tr -s " " | cut -c1-220)"
 diag "Fuses & Locks families" "$(grep -E '^(FL|FUSES)' <<<"$DBT")"
 printf '%s' "$DIAG" > "$ROOT/diag.txt"
 
