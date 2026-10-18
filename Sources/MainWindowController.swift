@@ -169,7 +169,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
 
         chipField.placeholderString = "e.g. AM27C256@DIP28 – use Search or Chip Ident"
         chipField.delegate = self
-        chipField.widthAnchor.constraint(greaterThanOrEqualToConstant: 300).isActive = true
+        chipField.widthAnchor.constraint(greaterThanOrEqualToConstant: 250).isActive = true
         let logic = logicTestButton
         let logicID = button("Logic Ident…", #selector(identifyLogic(_:)))
         let hardware = button("Hardware…", #selector(hardwareMenu(_:)))
@@ -2173,7 +2173,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         dis.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         hexEditor.headerAccessory = dis
         let r = row(buttons + tools + [spacer()])
-        r.spacing = 6
+        r.spacing = 5
         return r
     }
 
