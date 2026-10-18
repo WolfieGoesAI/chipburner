@@ -610,7 +610,7 @@ enum LogicModels {
             var parts = ["resets and controls"]
             if model.full > 0 { parts.append("a full \(model.full)-pulse cycle") }
             parts += ["neighbour-pin patterns", "512 random steps"]
-            description = "\(vecs.count) steps: " + parts.joined(separator: ", ")
+            description = parts.joined(separator: ", ")
         }
         let res = simulate(model, names: names, vectors: vecs)
         var out: [[Character]] = []

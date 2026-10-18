@@ -55,8 +55,8 @@ import kotlinx.coroutines.withContext
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SearchScreen(state: AppState, initialKind: String? = null, onClose: () -> Unit, onPick: (String) -> Unit) {
-    val startLogic = initialKind == "LOGIC" && state.chipInfo?.kind != ChipInfo.Kind.LOGIC
-    val initial = if (startLogic) "" else state.chip.substringBefore('@')
+    // Search logic chip starts empty: the Logic filter then lists every 74xx and 40xx chip
+    val initial = if (initialKind == "LOGIC") "" else state.chip.substringBefore('@')
     var field by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue(initial, TextRange(initial.length))) }
     val query = field.text
     var kind by rememberSaveable { mutableStateOf(initialKind) }

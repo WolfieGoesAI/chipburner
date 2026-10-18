@@ -552,7 +552,7 @@ object LogicModels {
             val parts = mutableListOf("resets and controls")
             if (model.full > 0) parts += "a full ${model.full}-pulse cycle"
             parts += listOf("neighbour-pin patterns", "512 random steps")
-            description = "${vecs.size} steps: " + parts.joinToString(", ")
+            description = parts.joinToString(", ")
         }
         val strs = vecs.map { String(it) }
         val res = simulate(model, names, strs)
