@@ -298,6 +298,183 @@ class AppState(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // MARK: Chip Test (SRAM pattern test / EPROM, EEPROM and flash health check)
+
+    data class ChipTestOptions(
+        val solid: Boolean = true, val checker: Boolean = true, val address: Boolean = true, val backup: Boolean = true,
+        val reads: Int = 3, val analyse: Boolean = true, val compareBuffer: Boolean = false, val writeTest: Boolean = false,
+    )
+
+    val testReport = mutableStateListOf<String>()
+    var chipTestRunning by mutableStateOf(false); private set
+    var chipTestStep by mutableStateOf(""); private set
+    private var testFailures = 0
+
+    /** "sram", "memory" or null when Chip Test doesn't apply to the selected chip. */
+    val chipTestKind: String?
+        get() {
+            val i = chipInfo ?: return null
+            if (i.codeSize <= 0) return null
+            return when (i.kind) { ChipInfo.Kind.SRAM -> "sram"; ChipInfo.Kind.MEMORY -> "memory"; else -> null }
+        }
+
+    /** Whether the write test can be offered, and why not when it can't. */
+    val writeTestAvailability: Pair<Boolean, String>
+        get() = when (eraseMethod) {
+            is EraseMethod.Unavailable -> false to (if (Chips.isUVEPROM(chip)) "not for UV EPROMs – they can only be erased with UV light" else "not available for this chip")
+            else -> (chipInfo?.kind == ChipInfo.Kind.MEMORY && !Chips.isUVEPROM(chip)) to ""
+        }
+
+    val bufferMatchesChip: Boolean get() = buffer.isNotEmpty() && buffer.size == (chipInfo?.codeSize ?: -1)
+
+    private fun say(line: String) { testReport += line }
+
+    private class TestStep(val title: String, val args: List<String>, val after: (Boolean, String) -> Boolean)
+
+    private fun stepOk(ok: Boolean, out: String, what: String): Boolean {
+        if (!ok) {
+            testFailures++
+            say("✗ $what failed – minipro said:")
+            out.lines().filter { it.isNotBlank() && !it.contains("overridden database") }.takeLast(6).forEach { say("    $it") }
+        }
+        return ok
+    }
+
+    private fun addr(a: Int, size: Int) = "%0${if (size > 0x10000) 6 else 4}X".format(a)
+
+    private fun describe(r: ChipTests.CompareResult, label: String, size: Int) {
+        if (r.ok) { say("✓ $label: every byte correct."); return }
+        testFailures++
+        if (r.sizeMismatch) say("✗ $label: the read size differs from the chip size.")
+        if (r.badBytes > 0) {
+            say("✗ $label: ${r.badBytes} wrong byte(s); faulty bits: ${ChipTests.bitList(r.badBits)}.")
+            for (m in r.samples) say("    %s: wrote %02X, read %02X".format(addr(m.address, size), m.expected, m.got))
+            if (r.badBytes > r.samples.size) say("    … and ${r.badBytes - r.samples.size} more")
+            if (r.addressLineSuspects.isNotEmpty()) say("    Address line(s) ${r.addressLineSuspects.joinToString(", ") { "A$it" }} look stuck or shorted: bytes read back the value written one address-bit away.")
+        }
+    }
+
+    fun startChipTest(o: ChipTestOptions) {
+        if (busy || chipTestRunning) return
+        val kind = chipTestKind ?: run { message = "Chip Test isn't available for $chip" to "It works with SRAM and with EPROM, EEPROM and flash memory chips."; return }
+        if (!needsProgrammer()) return
+        val size = chipInfo!!.codeSize
+        val readArgs = listOf("-p", chip) + (if (skipId) listOf("-x") else emptyList())
+        val writeArgs = listOf("-p", chip) + (if (skipId) listOf("-y") else emptyList()) + (if (allowSize) listOf("-s") else emptyList())
+        val steps = ArrayList<TestStep>()
+        if (kind == "sram") {
+            val patterns = ArrayList<ChipTests.Pattern>()
+            if (o.solid) patterns += listOf(ChipTests.Pattern.ZEROS, ChipTests.Pattern.ONES)
+            if (o.checker) patterns += listOf(ChipTests.Pattern.X55, ChipTests.Pattern.XAA, ChipTests.Pattern.CHECKER)
+            if (o.address) patterns += ChipTests.Pattern.addressPatterns(size)
+            if (patterns.isEmpty()) { message = "Nothing to test" to "Tick at least one kind of pattern."; return }
+            val backup = tempFile("test-backup.bin")
+            if (o.backup) {
+                backup.delete()
+                steps += TestStep("Back up contents", readArgs + listOf("-r", backup.path)) { ok, out ->
+                    if (!stepOk(ok, out, "Backup read")) { say("  Test not started, so nothing was overwritten."); false }
+                    else { say("✓ Contents backed up ($size bytes)."); true }
+                }
+            }
+            for (p in patterns) {
+                val file = tempFile("test-${p.name}.bin"); val back = tempFile("test-${p.name}-read.bin")
+                val data = p.data(size)
+                file.writeBytes(data)
+                steps += TestStep("Write ${p.label}", writeArgs + listOf("-w", file.path, "-v", "-e")) { ok, out -> stepOk(ok, out, "Writing ${p.label}") }
+                steps += TestStep("Read back ${p.label}", readArgs + listOf("-r", back.path)) { ok, out ->
+                    if (!stepOk(ok, out, "Reading back ${p.label}") || !back.exists()) false
+                    else { describe(ChipTests.compare(data, back.readBytes(), p), p.label, size); true }
+                }
+            }
+            if (o.backup) steps += TestStep("Write the backup back", writeArgs + listOf("-w", backup.path, "-e")) { ok, out ->
+                if (stepOk(ok, out, "Writing the backup back")) say("✓ Original contents written back and verified.")
+                true
+            }
+        } else {
+            val n = o.reads.coerceIn(2, 20)
+            val reads = (1..n).map { tempFile("health-read-$it.bin").apply { delete() } }
+            val writeOk = o.writeTest && writeTestAvailability.first
+            var unstable = false
+            for (i in 1..n) {
+                steps += TestStep("Read $i of $n", readArgs + listOf("-r", reads[i - 1].path)) { ok, out ->
+                    if (!stepOk(ok, out, "Read $i")) false
+                    else if (i < n) true
+                    else {
+                        unstable = afterReads(reads, o)
+                        if (unstable && writeOk) { say("Write test skipped: the reads weren't identical, so the backup of the contents can't be trusted."); false } else true
+                    }
+                }
+            }
+            if (writeOk) {
+                val backup = reads[0]
+                for (p in listOf(ChipTests.Pattern.X55, ChipTests.Pattern.XAA) + ChipTests.Pattern.addressPatterns(size)) {
+                    val file = tempFile("health-${p.name}.bin"); val back = tempFile("health-${p.name}-read.bin")
+                    val data = p.data(size)
+                    file.writeBytes(data)
+                    steps += TestStep("Write test: ${p.label}", writeArgs + listOf("-w", file.path, "-v")) { ok, out -> stepOk(ok, out, "Writing ${p.label}") }
+                    steps += TestStep("Read back ${p.label}", readArgs + listOf("-r", back.path)) { ok, out ->
+                        if (!stepOk(ok, out, "Reading back ${p.label}") || !back.exists()) false
+                        else { describe(ChipTests.compare(data, back.readBytes(), p), "Write test ${p.label}", size); true }
+                    }
+                }
+                steps += TestStep("Write the original contents back", writeArgs + listOf("-w", backup.path)) { ok, out ->
+                    if (stepOk(ok, out, "Writing the original contents back")) say("✓ Original contents written back and verified.")
+                    true
+                }
+            }
+        }
+        testReport.clear()
+        testFailures = 0
+        scanCancelled = false
+        chipTestRunning = true
+        say("ChipBurner chip test – $chip – " + java.text.DateFormat.getDateTimeInstance().format(java.util.Date()))
+        say("─".repeat(40))
+        runTestStep(steps, 0, kind == "sram" && o.backup)
+    }
+
+    private fun runTestStep(steps: List<TestStep>, i: Int, backupPending: Boolean) {
+        if (scanCancelled) { finishChipTest(stopped = true, backupPending = backupPending); return }
+        if (i >= steps.size) { finishChipTest(stopped = false, backupPending = false); return }
+        val s = steps[i]
+        chipTestStep = "Step ${i + 1} of ${steps.size}: ${s.title}"
+        runJob(s.title, s.args) { ok, out ->
+            if (scanCancelled) { finishChipTest(stopped = true, backupPending = backupPending); return@runJob }
+            if (s.after(ok, out)) runTestStep(steps, i + 1, backupPending && !s.title.startsWith("Write the backup"))
+            else finishChipTest(stopped = false, backupPending = false)
+        }
+    }
+
+    private fun finishChipTest(stopped: Boolean, backupPending: Boolean) {
+        chipTestRunning = false
+        chipTestStep = if (stopped) "Stopped." else "Finished."
+        say("─".repeat(40))
+        if (stopped) say("Test stopped before the end." + if (backupPending) " The backup was NOT written back – write it from the buffer if needed." else "")
+        else say(if (testFailures == 0) "RESULT: PASSED – no faults found." else "RESULT: $testFailures problem(s) found – see above.")
+        if (stopped && backupPending) tempFile("test-backup.bin").takeIf { it.exists() }?.let { setBuffer(it.readBytes(), "SRAM backup of $chip") }
+    }
+
+    /** After the repeated reads: stability, content analysis, comparison with the buffer. Returns true when the reads differ. */
+    private fun afterReads(files: List<File>, o: ChipTestOptions): Boolean {
+        val reads = files.mapNotNull { f -> if (f.exists()) f.readBytes() else null }
+        if (reads.size != files.size) { testFailures++; say("✗ Could not load the reads."); return true }
+        val size = reads[0].size
+        val st = ChipTests.stability(reads)
+        if (st.ok) say("✓ ${reads.size} reads are identical – no unstable bits.")
+        else {
+            testFailures++
+            say("✗ ${st.unstableBytes} byte(s) read differently between reads; unstable bits: ${ChipTests.bitList(st.unstableBits)}.")
+            say("  This is typical of a weak, ageing or partly erased EPROM, or of poor socket contact.")
+            for ((a, values) in st.samples) say("    ${addr(a, size)}: " + values.joinToString(" ") { "%02X".format(it) })
+        }
+        if (o.analyse) {
+            say("Contents:")
+            ChipTests.hints(ChipTests.analyse(reads[0])).forEach { say("  • $it") }
+            say("  • Sum 0x%04X, CRC32 0x%08X".format(DataFormats.sum16(reads[0]), DataFormats.crc32(reads[0])))
+        }
+        if (o.compareBuffer && bufferMatchesChip) describe(ChipTests.compare(buffer, reads[0], null), "Compared with the buffer", size)
+        return !st.ok
+    }
+
     /** The selected chip's pinout drawing, if there is one. */
     fun currentPinout(): ChipPinout? {
         val info = chipInfo ?: return null

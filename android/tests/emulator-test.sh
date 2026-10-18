@@ -60,6 +60,9 @@ adb shell input keyevent KEYCODE_BACK; sleep 1
 tap_text "Pinout" | tee -a "$OUT"; sleep 2
 shot 4b-pinout
 adb shell input keyevent KEYCODE_BACK; sleep 1
+tap_text "Test" | tee -a "$OUT"; sleep 2
+shot 4f-chiptest
+adb shell input keyevent KEYCODE_BACK; sleep 1
 tap_text "Search" | tee -a "$OUT"; sleep 2
 for i in $(seq 12); do adb shell input keyevent 67; done
 adb shell input text 74161; sleep 3
@@ -68,7 +71,7 @@ tap_text "74161" last | tee -a "$OUT"; sleep 2
 tap_text "Pinout" | tee -a "$OUT"; sleep 2
 shot 4c-logic-pinout
 adb shell input keyevent KEYCODE_BACK; sleep 1
-tap_text "Ident" | tee -a "$OUT"; sleep 2
+tap_text "Identify" | tee -a "$OUT"; sleep 2
 shot 4d-ident
 adb shell input keyevent KEYCODE_BACK; sleep 1
 tap_text "More" | tee -a "$OUT"; sleep 2

@@ -59,6 +59,7 @@ fun ChipScreen(state: AppState, files: FileActions, onSearch: () -> Unit, onShow
     var connMenu by remember { mutableStateOf(false) }
     var showPinout by remember { mutableStateOf(false) }
     var showLogicIdent by remember { mutableStateOf(false) }
+    var showChipTest by remember { mutableStateOf(false) }
     val chipInfo = state.chipInfo
     val erase = state.eraseMethod
     val canWork = !state.busy
@@ -110,12 +111,11 @@ fun ChipScreen(state: AppState, files: FileActions, onSearch: () -> Unit, onShow
                             }, fontSize = 13.sp, color = C.text2, fontFamily = Sans,
                         )
                     }
-                    ChipThumb(chipInfo)
                 }
                 Spacer(Modifier.height(4.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlineButton("Search", Modifier.weight(1f), enabled = state.dbReady, onClick = onSearch)
-                    OutlineButton("Ident", Modifier.weight(1f), enabled = canWork) { showIdent = true }
+                    OutlineButton("Identify", Modifier.weight(1f), enabled = canWork) { showIdent = true }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlineButton("Info", Modifier.weight(1f), enabled = canWork && state.chip.isNotEmpty()) { state.chipInfoText { info = it } }
@@ -128,13 +128,14 @@ fun ChipScreen(state: AppState, files: FileActions, onSearch: () -> Unit, onShow
 
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    TileButton("Read", Modifier.weight(1f), enabled = canWork, accent = true) { state.readChip() }
-                    TileButton("Auto…", Modifier.weight(1f), enabled = canWork) {
-                        if (state.buffer.isEmpty()) state.message = "The buffer is empty" to "Open a file or read a chip first." else state.autoProgram()
+                    TileButton("Read", Modifier.weight(1f), enabled = canWork) { state.readChip() }
+                    TileButton("Test", Modifier.weight(1f), enabled = canWork) {
+                        if (state.chipTestKind == null) state.message = "Chip Test isn't available" to (if (state.chip.isEmpty()) "Choose a chip first." else "It works with SRAM and with EPROM, EEPROM and flash memory chips. Logic chips are tested on the Test tab.")
+                        else showChipTest = true
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    TileButton("Program…", Modifier.weight(1f), enabled = canWork) {
+                    TileButton("Program", Modifier.weight(1f), enabled = canWork) {
                         if (state.buffer.isEmpty()) state.message = "The buffer is empty" to "Open a file or read a chip first." else confirmProgram = true
                     }
                     TileButton("Verify", Modifier.weight(1f), enabled = canWork) { state.verify() }
@@ -154,7 +155,9 @@ fun ChipScreen(state: AppState, files: FileActions, onSearch: () -> Unit, onShow
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.weight(1f)) { Eyebrow("Buffer") }
                     TextButton(onClick = files.open) { Text("Open file", color = C.amber, fontFamily = Sans) }
-                    TextButton(onClick = onShowBuffer) { Text("Editor", color = C.amber, fontFamily = Sans) }
+                    TextButton(onClick = { files.save(suggestedBufferName(state)) }, enabled = state.buffer.isNotEmpty()) {
+                        Text("Save file", color = if (state.buffer.isNotEmpty()) C.amber else C.text3, fontFamily = Sans)
+                    }
                 }
                 if (state.buffer.isEmpty()) {
                     Text("Empty – read a chip or open a file", fontFamily = Mono, fontSize = 14.sp, color = C.text3)
@@ -171,6 +174,7 @@ fun ChipScreen(state: AppState, files: FileActions, onSearch: () -> Unit, onShow
     if (showIdent) IdentDialog(state, onLogic = { showLogicIdent = true }) { showIdent = false }
     if (showLogicIdent) LogicIdentDialog(state) { showLogicIdent = false }
     LogicMatchesDialog(state)
+    if (showChipTest) ChipTestDialog(state) { showChipTest = false }
     if (showPinout) PinoutDialog(state.chip, state.currentPinout()) { showPinout = false }
     state.identMatches?.let { matches ->
         PickDialog("Chips with this ID", "Pick the exact part printed on the chip.", matches, onDismiss = { state.identMatches = null }) {

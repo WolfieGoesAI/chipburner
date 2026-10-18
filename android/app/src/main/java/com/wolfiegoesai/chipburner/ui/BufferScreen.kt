@@ -146,13 +146,13 @@ fun BufferScreen(state: AppState, files: FileActions) {
             if (m == null) state.message = "Not understood" to "Write it as from-to=value in hex, e.g. 0-7FFF=FF."
             else state.fill(m.groupValues[1].toInt(16), m.groupValues[2].toInt(16), m.groupValues[3].toInt(16))
         }
-        "save" -> InputDialog("Save buffer", "File name (.bin or .hex)", suggestedName(state), onDismiss = { dialog = null }) { s ->
+        "save" -> InputDialog("Save buffer", "File name (.bin or .hex)", suggestedBufferName(state), onDismiss = { dialog = null }) { s ->
             files.save(s.ifBlank { "buffer.bin" })
         }
     }
 }
 
-private fun suggestedName(state: AppState): String {
+fun suggestedBufferName(state: AppState): String {
     val base = state.chip.substringBefore('@').ifEmpty { "buffer" }
     val n = state.bufferName
     return if (n.contains('.') && !n.startsWith("read from") && n != "new") n else "$base.bin"
