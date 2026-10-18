@@ -1167,9 +1167,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         }
     }
 
-    /// minipro marks a pin that didn't match with "-" right after the expected state.
-    private static func failingVectorLines(_ output: String) -> [String] {
-        output.components(separatedBy: .newlines).filter { $0.range(of: "[01HLZXCGV]-", options: .regularExpression) != nil }
+    /// minipro marks a pin that didn't match with "-" right after the expected state. Only the vector
+    /// rows ("0012: 0  L- X …") count – other output (messages, file paths) may contain hyphens too.
+    /// minipro's own verdict wins when it says the test was successful.
+    static func failingVectorLines(_ output: String) -> [String] {
+        let lines = output.components(separatedBy: .newlines)
+        if lines.contains(where: { $0.contains("Logic test successful") }) { return [] }
+        return lines.filter { line in
+            let t = line.trimmingCharacters(in: .whitespaces)
+            guard t.range(of: "^[0-9]{4}:", options: .regularExpression) != nil else { return false }
+            return t.dropFirst(5).split(separator: " ").contains { $0.count == 2 && $0.hasSuffix("-") && "01HLZXCGV".contains($0.first!) }
+        }
     }
 
     /// Logic chips have no ID, so this runs the test vectors of every candidate with the chosen pin count
