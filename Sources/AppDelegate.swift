@@ -165,7 +165,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         bufMenu.addItem(withTitle: "Resize Buffer…", action: #selector(MainWindowController.resizeBuffer(_:)), keyEquivalent: "")
         bufMenu.addItem(.separator())
         bufMenu.addItem(withTitle: "Compare with File…", action: #selector(MainWindowController.compareWithFile(_:)), keyEquivalent: "")
-        bufMenu.addItem(withTitle: "Compare with Chip", action: #selector(MainWindowController.compareWithChip(_:)), keyEquivalent: "")
+        bufMenu.addItem(withTitle: "Compare with Chip…", action: #selector(MainWindowController.compareWithChip(_:)), keyEquivalent: "")
         let dis = bufMenu.addItem(withTitle: "Disassemble…", action: #selector(MainWindowController.disassemble(_:)), keyEquivalent: "d")
         dis.keyEquivalentModifierMask = [.command, .option]
         bufItem.submenu = bufMenu

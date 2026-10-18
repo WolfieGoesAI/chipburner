@@ -22,6 +22,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     // MARK: Views
     private let programmerLabel = NSTextField(labelWithString: "Not checked yet")
     private let chipField = NSTextField()
+    /// The chip description; no longer shown as a line, it's the chip field's tooltip.
     private let chipInfoLabel = NSTextField(labelWithString: "")
     private let bufferLabel = NSTextField(labelWithString: "Buffer: empty")
     private var programmerModel: String?
@@ -165,7 +166,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
 
         programmerLabel.lineBreakMode = .byTruncatingTail
         programmerLabel.isSelectable = true
-        let progRow = row([bold("Programmer:"), programmerLabel, spacer()])
 
         chipField.placeholderString = "e.g. AM27C256@DIP28 – use Search or Chip Ident"
         chipField.delegate = self
@@ -177,8 +177,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         let chipRow = NSGridView(views: [
             [bold("Chip:"), chipField, button("Search…", #selector(searchChips(_:))),
              button("Chip Ident…", #selector(identifyChip(_:))), chipTestButton, button("Chip Info", #selector(chipInfo(_:))), NSView()],
-            [NSView(), NSView(), NSView(), logicID, logic, hardware, NSView()],
+            [bold("Programmer:"), programmerLabel, NSView(), logicID, logic, hardware, NSView()],
         ])
+        // The programmer name may use the Search column's space too.
+        chipRow.row(at: 1).mergeCells(in: NSRange(location: 1, length: 2))
         chipRow.rowSpacing = 6
         chipRow.columnSpacing = 8
         chipRow.rowAlignment = .firstBaseline
@@ -299,14 +301,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         }
         let dividerTop = divider(), dividerBottom = divider(), dividerStatus = divider()
         // The edit buttons sit under the buffer, with a divider between them and the status line.
-        let rows: [NSView] = [progRow, chipRow, chipInfoLabel, dividerTop, actionRow, settingsBlock, dividerBottom, bufferView, fileRow, editRow, dividerStatus, statusRow]
+        let rows: [NSView] = [chipRow, dividerTop, actionRow, settingsBlock, dividerBottom, bufferView, fileRow, editRow, dividerStatus, statusRow]
         let stack = NSStackView(views: rows)
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
         // Equal gaps above and below the chip description, so it sits midway between the chip rows and Read.
-        stack.setCustomSpacing(6, after: chipRow)
-        stack.setCustomSpacing(10, after: chipInfoLabel)
+        stack.setCustomSpacing(12, after: chipRow)
         stack.setCustomSpacing(12, after: dividerTop)
         stack.setCustomSpacing(12, after: settingsBlock)
         stack.setCustomSpacing(10, after: dividerBottom)
@@ -386,7 +387,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             voltages = VoltageOverrides()
             voltagesChip = chip.uppercased()
         }
-        defer { refreshCapabilities(); updateVoltageLabel(); updateEnabledState() }
+        defer {
+            refreshCapabilities(); updateVoltageLabel(); updateEnabledState()
+            let t = chipInfoLabel.stringValue.trimmingCharacters(in: .whitespaces)
+            chipField.toolTip = t.isEmpty ? nil : t
+        }
         guard ChipDatabase.shared.isLoaded else {
             chipInfoLabel.stringValue = "Loading chip database…"
             return
@@ -1768,7 +1773,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         }
         walk(content)
         print("SMOKE window visible=\(w.isVisible) frame=\(NSStringFromRect(w.frame)) content=\(NSStringFromRect(content.frame)) buttons=\(buttons.count)")
-        for t in ["Read", "Stop", "Hardware…", "Save…", "Open…", "Fuses & Locks…", "Chip Test…", "Chip Ident…", "Logic Ident…", "Chip Info", "Logic Test", "Auto…", "Voltages…", "Options…"] {
+        for t in ["Read", "Stop", "Compare w File…", "Compare w Chip…", "Disassemble…", "Redo", "Hardware…", "Save…", "Open…", "Fuses & Locks…", "Chip Test…", "Chip Ident…", "Logic Ident…", "Chip Info", "Logic Test", "Auto…", "Voltages…", "Options…"] {
             if let r = buttons[t] { print(String(format: "SMOKE %@ x=%.0f..%.0f y=%.0f..%.0f", t, r.minX, r.maxX, r.minY, r.maxY)) }
             else { print("SMOKE missing button: \(t)") }
         }
@@ -2156,19 +2161,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         }
         hexEditor.onSelectionChange = { [weak self] in self?.updateSelectionLabel() }
         updateSelectionLabel()
-        // Tools: compare, disassemble, pinout.
-        let tools = NSPopUpButton(frame: .zero, pullsDown: true)
-        tools.controlSize = .small
-        tools.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        tools.addItem(withTitle: "Tools")
-        for (t, sel) in [("Compare with File…", #selector(compareWithFile(_:))), ("Compare with Chip", #selector(compareWithChip(_:))),
-                         ("Disassemble…", #selector(disassemble(_:))), ("Pinout…", #selector(showPinout(_:)))] {
-            let item = NSMenuItem(title: t, action: sel, keyEquivalent: "")
-            item.target = self
-            tools.menu?.addItem(item)
+        let tools = [("Compare w File…", #selector(compareWithFile(_:))), ("Compare w Chip…", #selector(compareWithChip(_:))),
+                     ("Disassemble…", #selector(disassemble(_:)))].map { item -> NSButton in
+            let b = button(item.0, item.1)
+            b.controlSize = .small
+            b.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+            return b
         }
-        tools.toolTip = "Compare the buffer with a file or chip, show it as CPU code, or show the chip's pinout."
-        return row(buttons + [tools, spacer()])
+        return row(buttons + tools + [spacer()])
     }
 
     /// Called after every edit: marks the buffer edited and refreshes the label (checksums are
