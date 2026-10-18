@@ -74,6 +74,17 @@ jobs:
           name: ChipBurner-Android
           path: dist/*.apk
 
+      - name: Publish APK as a release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="0.1.${{ github.run_number }}"
+          cp "dist/ChipBurner-$V.apk" dist/ChipBurner-Android.apk
+          gh release create "android-v$V" dist/ChipBurner-Android.apk --repo "${{ github.repository }}" --target "$GITHUB_SHA" \
+            --title "ChipBurner for Android $V" --latest \
+            --notes "Open this page on the phone and tap ChipBurner-Android.apk to download it, then open the file to install (allow installs from your browser when Android asks). Needs Android 8 or newer and a USB-OTG cable for the TL866A."
+
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
