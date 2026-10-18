@@ -60,7 +60,7 @@ fun PrimaryButton(text: String, icon: Int? = null, enabled: Boolean = true, modi
 }
 
 @Composable
-fun TileButton(text: String, enabled: Boolean = true, modifier: Modifier = Modifier, onClick: () -> Unit) {
+fun TileButton(text: String, modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit) {
     Button(
         onClick = onClick, enabled = enabled, shape = RoundedCornerShape(16.dp),
         colors = ButtonDefaults.buttonColors(containerColor = C.raised, contentColor = C.text, disabledContainerColor = C.card, disabledContentColor = C.text3),

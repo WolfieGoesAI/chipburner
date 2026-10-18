@@ -60,7 +60,8 @@ jobs:
           set -o pipefail
           export BUILD_DATE="$(date -u +%Y-%m-%d)"
           if ! gradle -p android assembleRelease --console=plain 2>&1 | tee gradle.log; then
-            { echo "### Gradle errors"; grep -E '^e: |error:|What went wrong|Could not|> ' gradle.log | head -80; } >> android-diag.txt
+            { echo "### Gradle errors"; grep -E '^e: |error:|What went wrong' -A2 gradle.log | grep -v '^> Task' | sed 's|file:///home/runner/work/chipburner/chipburner/android/app/src/main/java/com/wolfiegoesai/chipburner/||' | head -120; echo; cat android-diag.txt; } > diag2.txt
+            mv diag2.txt android-diag.txt
             exit 1
           fi
           mkdir -p dist
