@@ -1,6 +1,8 @@
 package com.wolfiegoesai.chipburner.ui
 
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
@@ -44,7 +46,8 @@ val Mono = FontFamily(
     Font(R.font.plex_mono_semibold, FontWeight.SemiBold),
 )
 
-private val base = TextStyle(fontFamily = Sans, color = C.text)
+// no colour in the styles: text takes LocalContentColor, so disabled buttons dim their labels
+private val base = TextStyle(fontFamily = Sans)
 
 val AppTypography = Typography(
     headlineSmall = base.copy(fontSize = 22.sp, fontWeight = FontWeight.SemiBold),
@@ -52,7 +55,7 @@ val AppTypography = Typography(
     titleMedium = base.copy(fontSize = 16.sp, fontWeight = FontWeight.Medium),
     bodyLarge = base.copy(fontSize = 16.sp),
     bodyMedium = base.copy(fontSize = 14.sp),
-    bodySmall = base.copy(fontSize = 12.sp, color = C.text2),
+    bodySmall = base.copy(fontSize = 12.sp),
     labelLarge = base.copy(fontSize = 15.sp, fontWeight = FontWeight.Medium),
     labelMedium = base.copy(fontSize = 12.sp, fontWeight = FontWeight.Medium),
     labelSmall = base.copy(fontSize = 11.sp),
@@ -70,6 +73,5 @@ fun ChipBurnerTheme(content: @Composable () -> Unit) {
             error = C.red, errorContainer = C.redBg,
         ),
         typography = AppTypography,
-        content = content,
-    )
+    ) { CompositionLocalProvider(LocalContentColor provides C.text, content = content) }
 }
