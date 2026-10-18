@@ -236,6 +236,7 @@ diag() { DIAG+="### $1"$'\n'"$2"$'\n\n'; }
 diag "minipro source" "$MINIPRO_DESC"$'\n'"$("$APP/Contents/MacOS/minipro" --version 2>&1 | head -5)"
 diag "Test-related chip types" "$(grep -E '^(SRAM|DRAMLOGIC|LOGICNAMES|TL866A entries)' <<<"$DBT")"
 diag "Pinout coverage" "$(grep '^PINCOVER' <<<"$DBT")"
+diag "tl866a do_ic_test" "$(sed -n '/^static uint8_t \*do_ic_test/,/^}/p' "$WORK/src/minipro-git/src/tl866a.c" | head -80; grep -n 'vcc_logic\|LOGIC_VOLTAGE\|voltage=\|vcc_table\|"5V"\|3V3' "$WORK/src/minipro-git/src/"*.c | head -20 | cut -c1-200 | sed 's|.*/src/||')"
 diag "Fuses & Locks families" "$(grep -E '^(FL|FUSES)' <<<"$DBT")"
 printf '%s' "$DIAG" > "$ROOT/diag.txt"
 
