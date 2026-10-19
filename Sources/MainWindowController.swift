@@ -242,6 +242,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             let l = NSTextField(labelWithString: t)
             l.font = small
             l.alignment = .right
+            // Labels keep their natural width, so spare width never widens the label column.
+            l.setContentHuggingPriority(.required, for: .horizontal)
             return l
         }
         let empty = { () -> NSView in NSView() }
@@ -258,7 +260,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         grid.column(at: 0).xPlacement = .trailing
         grid.column(at: 1).xPlacement = .leading
         grid.column(at: 2).xPlacement = .trailing
-        grid.column(at: 3).xPlacement = .leading
+        // Any spare width goes to the Memory pop-up (it reaches to the buttons), not to the label column –
+        // otherwise Auto Layout picks either at launch and the Connection/Voltages/Options column shifts.
+        grid.column(at: 3).xPlacement = .fill
+        memoryPopup.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        connectionPopup.setContentHuggingPriority(.defaultHigh, for: .horizontal)
         grid.column(at: 2).leadingPadding = 12
         grid.column(at: 4).xPlacement = .fill      // the three buttons get the same width
         for r in 1...2 {
