@@ -153,7 +153,7 @@ fun BufferScreen(state: AppState, files: FileActions) {
 fun suggestedBufferName(state: AppState): String {
     val base = state.chip.substringBefore('@').ifEmpty { "buffer" }
     val n = state.bufferName
-    return if (n.contains('.') && !n.startsWith("read from") && n != "new") n else "$base.bin"
+    return if (n.contains('.') && !n.startsWith("Read from") && n != "New") n else "$base.bin"
 }
 
 private fun parseSize(s: String): Int? {

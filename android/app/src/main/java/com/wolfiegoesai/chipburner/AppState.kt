@@ -514,7 +514,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
         out.delete()
         runJob("Read $chip", listOf("-p", chip, "-r", out.path) + optionArgs("read")) { ok, _ ->
             if (ok && out.exists()) {
-                setBuffer(out.readBytes(), "read from $chip" + if (out.name.endsWith(".jed")) ".jed" else "")
+                setBuffer(out.readBytes(), "Read from $chip" + if (out.name.endsWith(".jed")) ".jed" else "")
                 message = "$chip read" to "${buffer.size} bytes are in the buffer. CRC32 0x%08X.".format(DataFormats.crc32(buffer))
             } else if (!minipro.stopRequested) {
                 message = "Reading $chip failed" to lastLines()
@@ -797,7 +797,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
         bufferVersion++
     }
 
-    fun newBuffer(size: Int, fill: Int) = setBuffer(ByteArray(size) { fill.toByte() }, "new")
+    fun newBuffer(size: Int, fill: Int) = setBuffer(ByteArray(size) { fill.toByte() }, "New")
 
     fun loadFile(name: String, data: ByteArray) {
         try {

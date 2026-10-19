@@ -170,7 +170,7 @@ fun ChipScreen(state: AppState, files: FileActions, onSearch: () -> Unit, onShow
                 } else {
                     val b = state.buffer
                     Text("${state.bufferName} · ${"%,d".format(b.size)} bytes", fontFamily = Mono, fontSize = 14.sp)
-                    Text("sum 0x%04X · CRC32 0x%08X".format(DataFormats.sum16(b), DataFormats.crc32(b)), fontFamily = Mono, fontSize = 12.sp, color = C.text2)
+                    Text("Sum 0x%04X · CRC32 0x%08X".format(DataFormats.sum16(b), DataFormats.crc32(b)), fontFamily = Mono, fontSize = 12.sp, color = C.text2)
                 }
             }
 
@@ -259,7 +259,7 @@ private fun ProgramSheet(state: AppState, onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet, containerColor = C.card) {
         Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text("Program ${state.chip}?", fontFamily = Sans, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
-            Text("${"%,d".format(state.buffer.size)} bytes from ${state.bufferName} will be written to the chip in the ZIF socket.",
+            Text("${"%,d".format(state.buffer.size)} bytes from the buffer (${state.bufferName}) will be written to the chip in the ZIF socket.",
                 fontFamily = Sans, fontSize = 14.sp, color = C.text2)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Fact("Before", if (state.noErase) "No erase" else when (state.eraseMethod) {
