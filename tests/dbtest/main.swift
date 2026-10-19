@@ -723,7 +723,7 @@ if let xml = try? String(contentsOfFile: args[2]) {
             for g in allLogicGroups(xml) where g.names.contains(where: { d.names.contains($0) || d.names.contains(Pinouts.logicBase($0)) }) && g.pins == d.pins.count {
                 groupsSeen += 1
                 // minipro's vectors may depend on the order the pins are set in: the best of the plausible orders must agree
-                var best = Int.max
+                var best = Int.max, bestChecks = 0
                 for res in [LogicModels.simulate(model, names: d.pins, vectors: g.vectors),
                             simulateOrdered(LogicModels.model(for: d.key, names: d.pins)!, names: d.pins, vectors: g.vectors, ascending: true),
                             simulateGrouped(LogicModels.model(for: d.key, names: d.pins)!, names: d.pins, vectors: g.vectors)] {
@@ -735,8 +735,9 @@ if let xml = try? String(contentsOfFile: args[2]) {
                             if m != (c != "L") { bad += 1 }
                         }
                     }
-                    if bad < best { best = bad; checks = n }
+                    if bad < best { best = bad; bestChecks = n }
                 }
+                checks += bestChecks   // summed over every group: a related chip's group (74LS54 for 7454) may check none of this model's outputs
                 if best > 0 { dslProblems.append("\(d.key): \(best) mismatches with \(g.names.joined(separator: ","))") }
             }
             if groupsSeen == 0 { dslProblems.append("\(d.key): not in the logic database"); continue }
