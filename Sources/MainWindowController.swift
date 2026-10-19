@@ -756,16 +756,32 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         done.keyEquivalent = "\r"
         let doneRow = NSStackView(views: [spacer(), done])
         doneRow.orientation = .horizontal
+        // VPP check: not a chip option, a tool for measuring the programmer's programming voltage.
+        let vppPopup = NSPopUpButton()
+        Self.vppLevels.forEach { vppPopup.addItem(withTitle: $0.title) }
+        vppPopup.selectItem(at: vppLevelIndex)
+        vppPopup.target = self
+        vppPopup.action = #selector(vppLevelChanged(_:))
+        vppPopup.toolTip = "The programming voltage to switch on for the measurement."
+        let vppButton = NSButton(title: "VPP Check…", target: self, action: #selector(vppCheckFromSettings(_:)))
+        vppButton.bezelStyle = .rounded
+        vppButton.toolTip = "Switches the chosen VPP onto ZIF pin 40 and GND onto ZIF pin 14, with the socket empty, so you can measure it."
+        let vppRow = NSStackView(views: [NSTextField(labelWithString: "VPP on ZIF pin 40:"), vppPopup, vppButton])
+        vppRow.orientation = .horizontal
+        vppRow.spacing = 8
+        let vppNote = NSTextField(wrappingLabelWithString: "TL866A/CS only. Measures the programming voltage the programmer really delivers, between ZIF pins 40 and 14, with the socket empty – e.g. before powering a chip that needs 12 V, such as the SID 6581.")
+        vppNote.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        vppNote.textColor = .secondaryLabelColor
         let views: [NSView] = [heading("Chip checks"), skipID, allowSize,
                                heading("Programming"), skipErase, skipVerify,
                                heading("Write protection"), unprotect, protectAfter,
-                               note, doneRow]
+                               note, heading("Programmer voltage check"), vppRow, vppNote, doneRow]
         let stack = NSStackView(views: views)
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 6
         stack.edgeInsets = NSEdgeInsets(top: 18, left: 20, bottom: 16, right: 20)
-        for h in [views[3], views[6], views[9]] { stack.setCustomSpacing(14, after: stack.views[stack.views.firstIndex(of: h)! - 1]) }
+        for h in [views[3], views[6], views[9], views[10]] { stack.setCustomSpacing(14, after: stack.views[stack.views.firstIndex(of: h)! - 1]) }
         stack.translatesAutoresizingMaskIntoConstraints = false
         let content = NSView()
         content.addSubview(stack)
@@ -776,10 +792,100 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             stack.bottomAnchor.constraint(equalTo: content.bottomAnchor),
             content.widthAnchor.constraint(equalToConstant: 420),
             note.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
+            vppNote.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
             doneRow.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
         ])
         sheet.contentView = content
         w.beginSheet(sheet) { [weak self] _ in self?.updateSettingsLabel() }
+    }
+
+    // MARK: VPP check
+
+    /// TL866A VPP levels and their codes (the high nibble of the voltage byte; minipro's tl866a_vpp_voltages).
+    static let vppLevels: [(title: String, code: Int)] = [
+        ("10 V", 0x40), ("12.5 V", 0x00), ("13.5 V", 0x30), ("14 V", 0x50),
+        ("16 V", 0x10), ("17 V", 0x70), ("18 V", 0x60), ("21 V", 0x20),
+    ]
+    private static let vppCheckSeconds = 120
+
+    private var vppLevelIndex: Int {
+        let i = UserDefaults.standard.object(forKey: "vppCheckLevel") as? Int ?? 1   // 12.5 V
+        return Self.vppLevels.indices.contains(i) ? i : 1
+    }
+
+    @objc private func vppLevelChanged(_ sender: NSPopUpButton) {
+        UserDefaults.standard.set(sender.indexOfSelectedItem, forKey: "vppCheckLevel")
+    }
+
+    @objc private func vppCheckFromSettings(_ sender: NSButton) {
+        if let sheet = sender.window {
+            settingChanged(nil)
+            sheet.sheetParent?.endSheet(sheet)
+        }
+        DispatchQueue.main.async { [weak self] in self?.vppCheck() }
+    }
+
+    /// Puts the chosen VPP on ZIF pin 40 and GND on ZIF pin 14 (socket empty) until Switch Off, Stop or the time limit.
+    private func vppCheck() {
+        guard let w = window, !isBusy else { return }
+        let level = Self.vppLevels[vppLevelIndex]
+        let a = NSAlert()
+        a.messageText = "VPP check: \(level.title) on ZIF pin 40"
+        a.informativeText = "Take every chip out of the ZIF socket and unplug the ICSP cable.\n\nChipBurner then switches the programming voltage (VPP, \(level.title)) onto ZIF pin 40 and ground onto ZIF pin 14 – the top-right and bottom-left pins of a 28-pin chip at the top of the socket. Measure between pins 40 (+) and 14 (–) with a multimeter (DC volts).\n\nVPP stays on until you press Switch Off, or for at most \(Self.vppCheckSeconds) seconds."
+        a.addButton(withTitle: "Switch On")
+        a.addButton(withTitle: "Cancel")
+        a.beginSheetModal(for: w) { [weak self] resp in
+            guard let self = self, resp == .alertFirstButtonReturn else { return }
+            self.setStatus("Checking the programmer…")
+            self.detectProgrammer { [weak self] found in
+                guard let self = self else { return }
+                guard found else {
+                    self.showError("No programmer found", "Check the USB cable and that the programmer's LED is on, then try again. The Log has minipro's answer.")
+                    return
+                }
+                guard Minipro.shared.programmerType == "TL866A" else {
+                    self.showError("The VPP check is for the TL866A/CS", "It switches the TL866A's own pin drivers. The connected programmer (\(self.programmerModel ?? "unknown")) isn't supported.")
+                    return
+                }
+                self.runVppCheck(level)
+            }
+        }
+    }
+
+    private func runVppCheck(_ level: (title: String, code: Int)) {
+        guard let w = window else { return }
+        let spec = String(format: "%02x,40,14,%d", level.code, Self.vppCheckSeconds)
+        let on = NSAlert()
+        on.messageText = "VPP is on: \(level.title) at ZIF pin 40"
+        on.informativeText = "Measure between ZIF pin 40 (+) and ZIF pin 14 (–) now, and note the reading.\n\nThe TL866A's real VPP varies from unit to unit; a chip that needs, say, 12 V ± 5 % (11.4–12.6 V) should only be powered from it if the reading is inside that range.\n\nVPP switches off by itself after \(Self.vppCheckSeconds) seconds."
+        on.addButton(withTitle: "Switch Off")
+        var finished = false
+        runJob("VPP check (\(level.title) on ZIF pin 40)", ["-t"], environment: ["CHIPBURNER_VPP_CHECK": spec],
+               reportsOwnResult: true) { [weak self] ok, output in
+            guard let self = self else { return }
+            finished = true
+            if on.window.isVisible { w.endSheet(on.window) }
+            let lines = output.components(separatedBy: .newlines).filter { $0.hasPrefix("VPP check:") }
+            let wasOn = lines.contains { $0.contains("VPP is ON") }
+            let isOff = lines.contains { $0.contains("VPP is OFF") }
+            if ok && isOff {
+                self.setStatus("VPP check: \(level.title) was on ZIF pin 40, now off", result: true)
+                self.log("✓ VPP check finished – VPP is off.")
+            } else {
+                self.setStatus("VPP check failed – see Log", result: false)
+                self.log("✗ VPP check failed.")
+                NSSound.beep()
+                let detail = lines.filter { !$0.contains("VPP is ON") && !$0.contains("switches off") }
+                self.showError(wasOn ? "The VPP check stopped with a problem" : "VPP could not be switched on",
+                               (detail.isEmpty ? "minipro didn't report the VPP check – see the Log." : detail.joined(separator: "\n"))
+                               + (wasOn && !isOff ? "\n\nIf you're not sure VPP is off, unplug the programmer's USB cable." : ""))
+            }
+        }
+        guard running != nil else { return }
+        on.beginSheetModal(for: w) { [weak self] _ in
+            guard let self = self, !finished else { return }
+            self.stop(nil)
+        }
     }
 
     @objc private func closeSettings(_ sender: NSButton) {
@@ -802,7 +908,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     /// Runs one minipro job with progress and logging; `done` gets success and the full output.
     /// `reportsOwnResult`: the caller sets the status and log line itself (used where minipro's exit code
     /// doesn't mean failure, e.g. the ID read, which always "mismatches" the reference chip's ID).
-    private func runJob(_ title: String, _ args: [String], logicic: URL? = nil, reportsOwnResult: Bool = false, then done: ((Bool, String) -> Void)? = nil) {
+    private func runJob(_ title: String, _ args: [String], logicic: URL? = nil, environment: [String: String] = [:],
+                        reportsOwnResult: Bool = false, then done: ((Bool, String) -> Void)? = nil) {
         guard !isBusy else { return }
         isBusy = true
         progress.doubleValue = 0
@@ -810,7 +917,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         log("▶︎ \(title): minipro \(args.joined(separator: " "))")
         let percent = try? NSRegularExpression(pattern: "(\\d{1,3})%")
         var collected: [String] = []
-        running = Minipro.shared.run(args, logicic: logicic, onLine: { [weak self] line, isProgress in
+        running = Minipro.shared.run(args, logicic: logicic, environment: environment, onLine: { [weak self] line, isProgress in
             guard let self = self else { return }
             if isProgress {
                 self.setStatus(line)

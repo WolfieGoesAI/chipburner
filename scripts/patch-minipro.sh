@@ -21,3 +21,32 @@ if grep -q 'msg\[5\] = handle->device->voltages.vpp << 4;' "$SRC"; then
 else
   echo "patch-minipro: TL866A voltage line not found (fixed upstream?) – left as it is"
 fi
+
+# 2. ChipBurner's VPP check (TL866A/CS): `minipro -t` with CHIPBURNER_VPP_CHECK set puts the programming voltage
+#    on one ZIF pin and GND on another, with the socket empty, so the real VPP can be measured with a meter.
+#    The code is in scripts/minipro-vppcheck.c; without the variable, -t is minipro's normal self-test.
+HERE="$(cd "$(dirname "$0")" && pwd)"
+if grep -q 'chipburner_vpp_check' "$SRC"; then
+  echo "patch-minipro: VPP check already present"
+else
+  grep -q '^/\* Minipro hardware check \*/' "$SRC" && grep -q '^int tl866a_hardware_check(minipro_handle_t \*handle)$' "$SRC" \
+    || { echo "patch-minipro: tl866a_hardware_check not found – VPP check not added"; exit 1; }
+  awk -v f="$HERE/minipro-vppcheck.c" '
+    /^\/\* Minipro hardware check \*\/$/ { while ((getline l < f) > 0) print l }
+    { print }
+    hw && /^\{$/ { print "\tif (getenv(\"CHIPBURNER_VPP_CHECK\"))\n\t\treturn chipburner_vpp_check(handle, getenv(\"CHIPBURNER_VPP_CHECK\"));"; hw = 0 }
+    /^int tl866a_hardware_check\(minipro_handle_t \*handle\)$/ { hw = 1 }
+  ' "$SRC" > "$SRC.new" && mv "$SRC.new" "$SRC"
+  grep -q 'return chipburner_vpp_check(handle' "$SRC" || { echo "patch-minipro: VPP check did not apply"; exit 1; }
+  echo "patch-minipro: VPP check added"
+fi
+# The variable must never turn another programmer's self-test into something else.
+MP="$1/src/minipro.c"
+if [ -f "$MP" ] && ! grep -q 'CHIPBURNER_VPP_CHECK' "$MP"; then
+  awk '
+    { print }
+    mp && /^\{$/ { print "\tif (getenv(\"CHIPBURNER_VPP_CHECK\") && handle->minipro_hardware_check != tl866a_hardware_check) {\n\t\tfprintf(stderr, \"VPP check: only for the TL866A/CS\\n\");\n\t\treturn EXIT_FAILURE;\n\t}"; mp = 0 }
+    /^int minipro_hardware_check\(minipro_handle_t \*handle\)$/ { mp = 1 }
+  ' "$MP" > "$MP.new" && mv "$MP.new" "$MP"
+  grep -q 'VPP check: only for the TL866A' "$MP" || { echo "patch-minipro: minipro.c guard did not apply"; exit 1; }
+fi

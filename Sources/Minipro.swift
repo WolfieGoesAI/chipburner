@@ -77,7 +77,8 @@ final class Minipro {
         return FileManager.default.isExecutableFile(atPath: exe.path)
     }
 
-    private func makeProcess(_ args: [String], includeDB: Bool, logicic override: URL? = nil) -> Process? {
+    private func makeProcess(_ args: [String], includeDB: Bool, logicic override: URL? = nil,
+                             environment extra: [String: String] = [:]) -> Process? {
         guard let exe = executable else { return nil }
         let p = Process()
         p.executableURL = exe
@@ -90,6 +91,7 @@ final class Minipro {
         p.standardInput = FileHandle.nullDevice
         var env = ProcessInfo.processInfo.environment
         env["LC_ALL"] = "C"
+        for (k, v) in extra { env[k] = v }
         p.environment = env
         return p
     }
@@ -112,10 +114,10 @@ final class Minipro {
     /// `onLine(text, isProgress)` is called on the main thread; progress lines are the ones
     /// minipro rewrites in place with a carriage return.
     @discardableResult
-    func run(_ args: [String], logicic: URL? = nil,
+    func run(_ args: [String], logicic: URL? = nil, environment: [String: String] = [:],
              onLine: @escaping (String, Bool) -> Void,
              completion: @escaping (Int32) -> Void) -> Process? {
-        guard let p = makeProcess(args, includeDB: true, logicic: logicic) else {
+        guard let p = makeProcess(args, includeDB: true, logicic: logicic, environment: environment) else {
             onLine("minipro is missing from the app bundle.", false)
             completion(-1)
             return nil
