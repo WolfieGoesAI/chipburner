@@ -1,0 +1,1 @@
+3e2f491 2026-09-21 Fix T76 SPI autodetect request length

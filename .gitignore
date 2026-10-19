@@ -1,0 +1,19 @@
+*.o
+minipro
+minipro-query-db
+version.h
+version.c
+*.tar
+*.gz
+.idea
+algorithm.xml
+
+# debian build artifacts
+debian/debhelper-build-stamp
+debian/files
+debian/minipro.debhelper.log
+debian/minipro.substvars
+
+# editor backups
+.*~
+*~
