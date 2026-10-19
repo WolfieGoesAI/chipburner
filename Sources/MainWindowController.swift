@@ -777,7 +777,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     }
 
     /// Runs one minipro job with progress and logging; `done` gets success and the full output.
-    private func runJob(_ title: String, _ args: [String], logicic: URL? = nil, then done: ((Bool, String) -> Void)? = nil) {
+    /// `reportsOwnResult`: the caller sets the status and log line itself (used where minipro's exit code
+    /// doesn't mean failure, e.g. the ID read, which always "mismatches" the reference chip's ID).
+    private func runJob(_ title: String, _ args: [String], logicic: URL? = nil, reportsOwnResult: Bool = false, then done: ((Bool, String) -> Void)? = nil) {
         guard !isBusy else { return }
         isBusy = true
         progress.doubleValue = 0
@@ -804,9 +806,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             self.isBusy = false
             let ok = status == 0
             self.progress.doubleValue = ok ? 100 : 0
-            self.setStatus(ok ? "\(title): done" : "\(title): failed (exit code \(status)) – see Log")
-            self.log(ok ? "✓ \(title) finished." : "✗ \(title) failed (exit code \(status)).")
-            if !ok { NSSound.beep() }
+            if !reportsOwnResult {
+                self.setStatus(ok ? "\(title): done" : "\(title): failed (exit code \(status)) – see Log")
+                self.log(ok ? "✓ \(title) finished." : "✗ \(title) failed (exit code \(status)).")
+                if !ok { NSSound.beep() }
+            }
             let all = collected.joined(separator: "\n")
             // Every job prints the programmer's firmware and serial number; keep the top line current.
             if let model = self.programmerModel, all.contains("Serial code:") {
@@ -994,9 +998,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             showError("\(ref) isn't in the \(programmer) database.", "Pick another reference, or use Hardware… ▸ Check Programmer first.")
             return
         }
-        runJob("Read ID", ["-p", ref, "-D", "-y"]) { [weak self] _, output in
+        // minipro compares the ID with the reference chip's and exits with 1 when they differ – which they
+        // nearly always do here, so the exit code says nothing; the ID in the output is what counts.
+        runJob("Read ID", ["-p", ref, "-D", "-y"], reportsOwnResult: true) { [weak self] _, output in
             guard let self = self, let w = self.window else { return }
             guard let id = ChipIDParser.parse(output), id != 0, id != 0xFFFF, id != 0xFFFFFFFF else {
+                self.setStatus("Read ID: no chip ID – see Log")
+                self.log("✗ Read ID: no chip ID could be read.")
+                NSSound.beep()
                 self.showError("No chip ID could be read.",
                                "Check that the chip sits correctly. Some chips, including old NMOS EPROMs, have no electronic ID – choose them with Search instead.")
                 return
@@ -1004,7 +1013,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             let idText = String(format: "0x%04X", id)
             var matches = ChipDatabase.shared.chips(withID: id, programmer: programmer, packageSuffix: refInfo.packageSuffix)
             if matches.isEmpty { matches = ChipDatabase.shared.chips(withID: id, programmer: programmer, packageSuffix: nil) }
-            self.log("Chip ID \(idText): \(Set(matches.map { $0.name.uppercased() }).count) matching chip(s) in the database.")
+            let count = Set(matches.map { $0.name.uppercased() }).count
+            self.log("✓ Read ID: chip ID \(idText) – \(count) matching chip(s) in the database. (The “ID mismatch” above is expected: \(ref) is only the reference for the ID read.)")
+            self.setStatus("Chip ID \(idText): \(count) matching chip(s)")
             guard !matches.isEmpty else {
                 self.showInfo("Chip ID \(idText) read", "No chip in the \(programmer) database has this ID. The maker code is 0x\(String(format: "%02X", (id >> 8) & 0xFF)).")
                 return
@@ -1014,6 +1025,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             let picker = ChipSearchController(title: "Chips with ID \(idText)", results: names) { [weak self] name in
                 guard let self = self, let name = name else { return }
                 self.selectChip(name)
+                self.setStatus("Chip ID \(idText): \(name) selected")
             }
             picker.present(on: w)
         }

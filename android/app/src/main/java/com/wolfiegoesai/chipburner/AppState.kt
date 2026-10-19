@@ -212,7 +212,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
     private val percent = Regex("(\\d{1,3})%")
 
     /** Runs one minipro job; [done] runs on the main thread with success and the full output. */
-    private fun runJob(title: String, args: List<String>, needsUsb: Boolean = true, logicOverride: File? = null, done: ((Boolean, String) -> Unit)? = null) {
+    private fun runJob(title: String, args: List<String>, needsUsb: Boolean = true, logicOverride: File? = null, reportsOwnResult: Boolean = false, done: ((Boolean, String) -> Unit)? = null) {
         if (busy) return
         if (needsUsb && !needsProgrammer()) return
         busy = true
@@ -243,10 +243,11 @@ class AppState(app: Application) : AndroidViewModel(app) {
                 progress = if (ok) 1f else null
                 status = when {
                     minipro.stopRequested -> "$title: stopped"
+                    reportsOwnResult -> "$title: done"
                     ok -> "$title: done"
                     else -> "$title: failed – see Log"
                 }
-                addLog(if (ok) "✓ $title finished." else "✗ $title failed (exit code $code).")
+                if (!reportsOwnResult) addLog(if (ok) "✓ $title finished." else "✗ $title failed (exit code $code).")
                 done?.invoke(ok, out.toString())
             }
         }
@@ -610,16 +611,20 @@ class AppState(app: Application) : AndroidViewModel(app) {
         }
         val ref = if (kind == IdentKind.SAME) chip else kind.reference
         val refInfo = db.info(ref, programmerType)
-        runJob("Read ID", listOf("-p", ref, "-D", "-y")) { _, out ->
+        // minipro exits with 1 when the ID differs from the reference chip's – nearly always here – so the ID decides
+        runJob("Read ID", listOf("-p", ref, "-D", "-y"), reportsOwnResult = true) { _, out ->
             val id = Chips.parseChipId(out)
             if (id == null || id == 0L || id == 0xFFFFL || id == 0xFFFFFFFFL) {
+                status = "Read ID: no chip ID"
+                addLog("✗ Read ID: no chip ID could be read.")
                 message = "No chip ID could be read" to "Check that the chip sits correctly. Old NMOS EPROMs have no ID – choose them with Search."
                 return@runJob
             }
             val matches = db.withId(id, programmerType, refInfo?.packageSuffix ?: "").map { it.name }
             if (matches.isEmpty()) message = "ID 0x%04X".format(id) to "No chip in the database has this ID."
             else {
-                addLog("Chip ID 0x%04X: %s".format(id, matches.joinToString(", ")))
+                addLog("✓ Read ID: chip ID 0x%04X – %s (the ID mismatch above is expected: %s is only the reference)".format(id, matches.joinToString(", "), ref))
+                status = "Chip ID 0x%04X: %d match(es)".format(id, matches.size)
                 identMatches = matches
             }
         }
