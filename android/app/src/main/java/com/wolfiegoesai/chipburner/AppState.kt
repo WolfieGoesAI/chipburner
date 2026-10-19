@@ -303,7 +303,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
 
     data class ChipTestOptions(
         val solid: Boolean = true, val checker: Boolean = true, val address: Boolean = true, val backup: Boolean = true,
-        val reads: Int = 3, val analyse: Boolean = true, val compareBuffer: Boolean = false, val writeTest: Boolean = false,
+        val reads: Int = 4, val analyse: Boolean = true, val compareBuffer: Boolean = false, val writeTest: Boolean = false,
     )
 
     val testReport = mutableStateListOf<String>()
@@ -392,22 +392,30 @@ class AppState(app: Application) : AndroidViewModel(app) {
                 true
             }
         } else {
-            val n = o.reads.coerceIn(2, 20)
-            val reads = (1..n).map { tempFile("health-read-$it.bin").apply { delete() } }
+            val n = o.reads.coerceIn(2, 256)
+            // read 1 is kept (it is the backup for the write test); the others are folded in and deleted at once
+            val first = tempFile("health-read-1.bin").apply { delete() }
+            val next = tempFile("health-read-next.bin")
             val writeOk = o.writeTest && writeTestAvailability.first
-            var unstable = false
+            var acc: ChipTests.StabilityAccumulator? = null
             for (i in 1..n) {
-                steps += TestStep("Read $i of $n", readArgs + listOf("-r", reads[i - 1].path)) { ok, out ->
+                val file = if (i == 1) first else next
+                steps += TestStep("Read $i of $n", readArgs + listOf("-r", file.path)) { ok, out ->
                     if (!stepOk(ok, out, "Read $i")) false
-                    else if (i < n) true
+                    else if (!file.exists()) { testFailures++; say("✗ Could not load read $i."); false }
                     else {
-                        unstable = afterReads(reads, o)
-                        if (unstable && writeOk) { say("Write test skipped: the reads weren't identical, so the backup of the contents can't be trusted."); false } else true
+                        if (i == 1) acc = ChipTests.StabilityAccumulator(first.readBytes())
+                        else { acc?.add(file.readBytes()); file.delete() }
+                        if (i < n) true
+                        else {
+                            val unstable = afterReads(acc!!, o)
+                            if (unstable && writeOk) { say("Write test skipped: the reads weren't identical, so the backup of the contents can't be trusted."); false } else true
+                        }
                     }
                 }
             }
             if (writeOk) {
-                val backup = reads[0]
+                val backup = first
                 for (p in listOf(ChipTests.Pattern.X55, ChipTests.Pattern.XAA) + ChipTests.Pattern.addressPatterns(size)) {
                     val file = tempFile("health-${p.name}.bin"); val back = tempFile("health-${p.name}-read.bin")
                     val data = p.data(size)
@@ -455,24 +463,23 @@ class AppState(app: Application) : AndroidViewModel(app) {
     }
 
     /** After the repeated reads: stability, content analysis, comparison with the buffer. Returns true when the reads differ. */
-    private fun afterReads(files: List<File>, o: ChipTestOptions): Boolean {
-        val reads = files.mapNotNull { f -> if (f.exists()) f.readBytes() else null }
-        if (reads.size != files.size) { testFailures++; say("✗ Could not load the reads."); return true }
-        val size = reads[0].size
-        val st = ChipTests.stability(reads)
-        if (st.ok) say("✓ ${reads.size} reads are identical – no unstable bits.")
+    private fun afterReads(acc: ChipTests.StabilityAccumulator, o: ChipTestOptions): Boolean {
+        val base = acc.base
+        val size = base.size
+        val st = acc.result()
+        if (st.ok) say("✓ ${acc.reads} reads are identical – no unstable bits.")
         else {
             testFailures++
-            say("✗ ${st.unstableBytes} byte(s) read differently between reads; unstable bits: ${ChipTests.bitList(st.unstableBits)}.")
+            say("✗ ${st.unstableBytes} byte(s) read differently between the ${acc.reads} reads; unstable bits: ${ChipTests.bitList(st.unstableBits)}.")
             say("  This is typical of a weak, ageing or partly erased EPROM, or of poor socket contact.")
-            for ((a, values) in st.samples) say("    ${addr(a, size)}: " + values.joinToString(" ") { "%02X".format(it) })
+            for ((a, counts) in st.counts) say("    ${addr(a, size)}: " + counts.joinToString("  ") { (v, c) -> "%02X ×%d".format(v, c) })
         }
         if (o.analyse) {
             say("Contents:")
-            ChipTests.hints(ChipTests.analyse(reads[0])).forEach { say("  • $it") }
-            say("  • Sum 0x%04X, CRC32 0x%08X".format(DataFormats.sum16(reads[0]), DataFormats.crc32(reads[0])))
+            ChipTests.hints(ChipTests.analyse(base)).forEach { say("  • $it") }
+            say("  • Sum 0x%04X, CRC32 0x%08X".format(DataFormats.sum16(base), DataFormats.crc32(base)))
         }
-        if (o.compareBuffer && bufferMatchesChip) describe(ChipTests.compare(buffer, reads[0], null), "Compared with the buffer", size)
+        if (o.compareBuffer && bufferMatchesChip) describe(ChipTests.compare(buffer, base, null), "Compared with the buffer", size)
         return !st.ok
     }
 

@@ -71,7 +71,7 @@ fun ChipTestDialog(state: AppState, onDismiss: () -> Unit) {
                         } else {
                             Text("Reads", fontFamily = Sans, fontSize = 13.sp, color = C.text2, modifier = Modifier.padding(start = 8.dp, top = 4.dp))
                             Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                for (n in listOf(2, 3, 5, 10)) FilterChipButton("$n", o.reads == n) { if (enabled) o = o.copy(reads = n) }
+                                for (n in listOf(4, 16, 64, 256)) FilterChipButton("$n", o.reads == n) { if (enabled) o = o.copy(reads = n) }
                             }
                             Check("Analyse the contents (blank, stuck bits, repeated halves)", o.analyse, enabled) { o = o.copy(analyse = it) }
                             Check(if (state.bufferMatchesChip) "Compare with the buffer" else "Compare with the buffer (needs a buffer of the chip's size)",

@@ -78,7 +78,41 @@ object ChipTests {
         var unstableBytes = 0
         var unstableBits = 0
         val samples = ArrayList<Pair<Int, List<Int>>>()
+        /** Per unstable address: each value read and how many times. */
+        val counts = ArrayList<Pair<Int, List<Pair<Int, Int>>>>()
         val ok: Boolean get() = unstableBytes == 0
+    }
+
+    /**
+     * Compares reads one at a time against the first, so even 256 reads of a large chip never need more than
+     * two reads in memory. Samples keep, for the first unstable addresses, how often each value was read.
+     */
+    class StabilityAccumulator(val base: ByteArray, private val maxSamples: Int = 12) {
+        private val diff = ByteArray(base.size)
+        private val tracked = LinkedHashMap<Int, LinkedHashMap<Int, Int>>()
+        var reads = 1; private set
+
+        fun add(read: ByteArray) {
+            val n = minOf(base.size, read.size)
+            for ((a, counts) in tracked) if (a < n) { val v = read[a].toInt() and 0xFF; counts[v] = (counts[v] ?: 0) + 1 }
+            for (i in 0 until n) {
+                val x = (read[i].toInt() xor base[i].toInt()) and 0xFF
+                if (x == 0) continue
+                if (diff[i].toInt() == 0 && tracked.size < maxSamples && i !in tracked) {
+                    // first time this byte differs: every earlier read gave the base value
+                    tracked[i] = linkedMapOf((base[i].toInt() and 0xFF) to reads, (read[i].toInt() and 0xFF) to 1)
+                }
+                diff[i] = (diff[i].toInt() or x).toByte()
+            }
+            reads++
+        }
+
+        fun result(): StabilityResult {
+            val r = StabilityResult()
+            for (d in diff) { val v = d.toInt() and 0xFF; if (v != 0) { r.unstableBytes++; r.unstableBits = r.unstableBits or v } }
+            for ((a, counts) in tracked) r.counts += a to counts.entries.map { it.key to it.value }
+            return r
+        }
     }
 
     fun stability(reads: List<ByteArray>, maxSamples: Int = 12): StabilityResult {

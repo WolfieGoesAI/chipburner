@@ -130,22 +130,23 @@ fun ChipScreen(state: AppState, files: FileActions, onSearch: () -> Unit, onShow
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                // left column: Read, Blank check, Test – right column: Erase, Program, Verify
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     TileButton("Read", Modifier.weight(1f), enabled = canMemory) { state.readChip() }
+                    TileButton("Erase", Modifier.weight(1f), enabled = canMemory && erase !is AppState.EraseMethod.Unavailable) { state.erase() }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    TileButton("Blank check", Modifier.weight(1f), enabled = canMemory) { state.blankCheck() }
+                    TileButton("Program", Modifier.weight(1f), enabled = canMemory) {
+                        if (state.buffer.isEmpty()) state.message = "The buffer is empty" to "Open a file or read a chip first." else confirmProgram = true
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     TileButton("Test", Modifier.weight(1f), enabled = canMemory) {
                         if (state.chipTestKind == null) state.message = "Chip Test isn't available" to (if (state.chip.isEmpty()) "Choose a chip first." else "It works with SRAM and with EPROM, EEPROM and flash memory chips. Logic chips are tested on the Test tab.")
                         else showChipTest = true
                     }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    TileButton("Program", Modifier.weight(1f), enabled = canMemory) {
-                        if (state.buffer.isEmpty()) state.message = "The buffer is empty" to "Open a file or read a chip first." else confirmProgram = true
-                    }
                     TileButton("Verify", Modifier.weight(1f), enabled = canMemory) { state.verify() }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    TileButton("Blank check", Modifier.weight(1f), enabled = canMemory) { state.blankCheck() }
-                    TileButton("Erase", Modifier.weight(1f), enabled = canMemory && erase !is AppState.EraseMethod.Unavailable) { state.erase() }
                 }
                 if (chipInfo?.kind == ChipInfo.Kind.LOGIC) {
                     Text("Logic chips are tested on the Test page.", fontSize = 12.sp, color = C.text3, fontFamily = Sans, modifier = Modifier.padding(horizontal = 4.dp))
