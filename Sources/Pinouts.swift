@@ -107,7 +107,15 @@ enum Pinouts {
         if flash { return flashPinout(pins: pins, size: size) }
         if eeprom { return eepromPinout(pins: pins, size: size) }
         if eprom { return epromPinout(pins: pins, size: size) }
-        if has("23128") && pins == 28 && size == 16384 {
+        if has("23C?256") && pins == 28 && size == 32768 {
+            // 28-pin 32K mask ROM: 27256 address/data pins, CE/OE (and pin 1 on some) with mask-set levels.
+            var p = base28(); set(&p, [1: "NC/CS", 20: "CE", 22: "OE"])
+            return ChipPinout(title: "23256 mask ROM (32K × 8)", pins: p, notes: [
+                "Mask ROM: read-only, it can't be erased or programmed.",
+                "Whether CE (pin 20) and OE (pin 22) are active high or low was set when the ROM was made; pin 1 is unused or a further chip select depending on the maker. Read tries every level combination and uses the one the ROM answers to.",
+                "Same address and data pins as a 27256; a 27256 can replace it if the select pins match."])
+        }
+        if has("23C?128") && pins == 28 && size == 16384 {
             // 28-pin 16K mask ROM: 27128 address/data pins, three chip selects whose levels the mask sets.
             var p = base28(); set(&p, [1: "NC", 20: "/CS2", 22: "/CS1", 27: "CS3"])
             return ChipPinout(title: "23128 mask ROM (16K × 8)", pins: p, notes: [

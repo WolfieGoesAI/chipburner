@@ -79,7 +79,9 @@ for n in ["X28C256", "AT28C256", "W27C512@DIP28", "AM27C256@DIP28", "GAL16V8", "
 }
 expect(db.info(for: "GAL16V8", programmer: "TL866A")?.canErase == true, "GAL16V8 has an erase command")
 expect(db.info(for: "23128@DIP28", programmer: "TL866A").map { $0.codeSize == 16384 && $0.canErase != true } == true
-       && db.info(for: "23128@DIP28", programmer: "TL866II") != nil, "23128 mask ROM in the TL866A and TL866II databases (patch-minipro.sh)")
+       && db.info(for: "23256@DIP28", programmer: "TL866A").map { $0.codeSize == 32768 } == true
+       && db.info(for: "23C256@DIP28", programmer: "TL866A") != nil
+       && db.info(for: "23128@DIP28", programmer: "TL866II") != nil, "23128/23256 mask ROMs in the TL866A and TL866II databases (patch-minipro.sh)")
 expect(db.info(for: "AM27C256@DIP28", programmer: "TL866A")?.canErase == false, "AM27C256 (UV EPROM) has no erase command")
 
 for n in ["PIC16F84A", "PIC16F628A", "ATMEGA8A", "ATMEGA88PA", "ATTINY2313", "AT89C2051", "AT89S52"] {
@@ -257,6 +259,8 @@ do {
     expect(Pinouts.find(chip: "AM29F040@TSOP32", size: 524288) == nil, "no pinout for TSOP")
     let m23128 = Pinouts.find(chip: "23128@DIP28", size: 16384)
     expect(m23128?.pins[0] == "NC" && m23128?.pins[19] == "/CS2" && m23128?.pins[21] == "/CS1" && m23128?.pins[25] == "A13" && m23128?.pins[26] == "CS3", "23128 mask ROM pinout")
+    let m23256 = Pinouts.find(chip: "23256@DIP28", size: 32768)
+    expect(m23256?.pins[0] == "NC/CS" && m23256?.pins[19] == "CE" && m23256?.pins[21] == "OE" && m23256?.pins[26] == "A14", "23256 mask ROM pinout")
     let m2364 = Pinouts.find(chip: "D2364C@DIP24", size: 8192)
     expect(m2364?.pins[17] == "A12" && m2364?.pins[19] == "CS" && m2364?.pins[20] == "A11", "2364 mask ROM pinout")
     // every generated layout has exactly one VCC and at least one ground

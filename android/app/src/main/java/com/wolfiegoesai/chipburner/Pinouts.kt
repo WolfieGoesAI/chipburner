@@ -83,7 +83,13 @@ object Pinouts {
         if (flash) return flashPinout(pins, size)
         if (eeprom) return eepromPinout(pins, size)
         if (eprom) return epromPinout(pins, size)
-        if (has("23128") && pins == 28 && size == 16384) {
+        if (has("23C?256") && pins == 28 && size == 32768) {
+            return ChipPinout("23256 mask ROM (32K × 8)", base28(1 to "NC/CS", 20 to "CE", 22 to "OE"), listOf(
+                "Mask ROM: read-only, it can't be erased or programmed.",
+                "Whether CE (pin 20) and OE (pin 22) are active high or low was set when the ROM was made; pin 1 is unused or a further chip select depending on the maker. Read tries every level combination and uses the one the ROM answers to.",
+                "Same address and data pins as a 27256; a 27256 can replace it if the select pins match."))
+        }
+        if (has("23C?128") && pins == 28 && size == 16384) {
             return ChipPinout("23128 mask ROM (16K × 8)", base28(1 to "NC", 20 to "/CS2", 22 to "/CS1", 27 to "CS3"), listOf(
                 "Mask ROM: read-only, it can't be erased or programmed.",
                 "The levels of CS1, CS2 and CS3 were set when the ROM was made (shown here: /CS1 and /CS2 low, CS3 high). Read tries all eight combinations and uses the one the ROM answers to.",
