@@ -133,7 +133,7 @@ fun ChipScreen(state: AppState, files: FileActions, onSearch: () -> Unit, onShow
                 // left column: Read, Blank check, Test – right column: Erase, Program, Verify
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     TileButton("Read", Modifier.weight(1f), enabled = canMemory) { state.readChip() }
-                    TileButton("Erase", Modifier.weight(1f), enabled = canMemory && erase !is AppState.EraseMethod.Unavailable) { state.erase() }
+                    TileButton("Erase", Modifier.weight(1f), enabled = canMemory && (state.chip.isEmpty() || erase !is AppState.EraseMethod.Unavailable)) { state.erase() }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     TileButton("Blank check", Modifier.weight(1f), enabled = canMemory) { state.blankCheck() }
