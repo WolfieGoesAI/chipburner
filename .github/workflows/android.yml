@@ -3,7 +3,7 @@ name: Build ChipBurner Android
 on:
   push:
     branches: [main]
-    paths: ['android/**', '.github/workflows/android.yml', 'scripts/patch-minipro.sh', 'scripts/minipro-vppcheck.c', 'Resources/logic/**', 'Sources/LogicModels.swift']
+    paths: ['android/**', '.github/workflows/android.yml', 'scripts/patch-minipro.sh', 'Resources/logic/**', 'Sources/LogicModels.swift']
   workflow_dispatch:
     inputs:
       minipro_ref:

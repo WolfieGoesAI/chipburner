@@ -150,7 +150,7 @@ cp "$WORK/src/minipro-git/LICENSE"* "$APP/Contents/Resources/minipro/" 2>/dev/nu
 cat > "$APP/Contents/Resources/minipro/SOURCE.txt" <<EOF
 This app runs minipro ($MINIPRO_DESC), licensed under the GNU GPL v3.
 Source code: https://gitlab.com/DavidGriffith/minipro
-ChipBurner applies small changes before building it (TL866A voltage byte fix, TL866A VPP check): scripts/patch-minipro.sh and scripts/minipro-vppcheck.c
+ChipBurner applies a small fix before building it (TL866A voltage byte): scripts/patch-minipro.sh
 in https://github.com/WolfieGoesAI/chipburner
 libusb $LIBUSB_VERSION (LGPL 2.1): https://github.com/libusb/libusb
 EOF
