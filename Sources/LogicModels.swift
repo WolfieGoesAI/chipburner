@@ -611,6 +611,28 @@ enum LogicModels {
             if model.full > 0 { parts.append("a full \(model.full)-pulse cycle") }
             parts += ["neighbour-pin patterns", "512 random steps"]
             description = parts.joined(separator: ", ")
+            // The TL866A sets a step's pins one after another (pin 1 first), so a step that changes data and a
+            // control, clock level or latch enable together races: data on pins below the control arrives before
+            // it, data above after it. Split such steps: data first, then each control on its own, then the step.
+            let ctrl = Set(inputs.filter { restDict[names[$0]] != nil || clocks.contains(names[$0]) })
+            var split: [[Character]] = []
+            var newStart = [Int](repeating: 0, count: vecs.count + 1)
+            for (n, v) in vecs.enumerated() {
+                newStart[n] = split.count
+                if n > 0 {
+                    var cur = vecs[n - 1].map { $0 == "C" ? Character("0") : $0 }
+                    let data = inputs.filter { !ctrl.contains($0) && cur[$0] != v[$0] }
+                    let controls = inputs.filter { ctrl.contains($0) && v[$0] != "C" && cur[$0] != v[$0] }
+                    if (!data.isEmpty && !controls.isEmpty) || controls.count > 1 {
+                        if !data.isEmpty { for i in data { cur[i] = v[i] }; split.append(cur) }
+                        for i in controls.dropLast() { cur[i] = v[i]; split.append(cur) }
+                    }
+                }
+                split.append(v)
+            }
+            newStart[vecs.count] = split.count
+            phases = phases.map { (name: $0.name, range: newStart[$0.range.lowerBound]..<newStart[$0.range.upperBound]) }
+            vecs = split
         }
         let res = simulate(model, names: names, vectors: vecs)
         var out: [[Character]] = []

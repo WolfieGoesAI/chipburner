@@ -553,6 +553,29 @@ object LogicModels {
             if (model.full > 0) parts += "a full ${model.full}-pulse cycle"
             parts += listOf("neighbour-pin patterns", "512 random steps")
             description = parts.joinToString(", ")
+            // The TL866A sets a step's pins one after another (pin 1 first), so a step that changes data and a
+            // control, clock level or latch enable together races: data on pins below the control arrives before
+            // it, data above after it. Split such steps: data first, then each control on its own, then the step.
+            val ctrl = inputs.filter { names[it] in restMap || names[it] in clocks }.toSet()
+            val split = ArrayList<CharArray>()
+            val newStart = IntArray(vecs.size + 1)
+            for ((n, v) in vecs.withIndex()) {
+                newStart[n] = split.size
+                if (n > 0) {
+                    val cur = vecs[n - 1].map { if (it == 'C') '0' else it }.toCharArray()
+                    val data = inputs.filter { it !in ctrl && cur[it] != v[it] }
+                    val controls = inputs.filter { it in ctrl && v[it] != 'C' && cur[it] != v[it] }
+                    if ((data.isNotEmpty() && controls.isNotEmpty()) || controls.size > 1) {
+                        if (data.isNotEmpty()) { for (i in data) cur[i] = v[i]; split += cur.copyOf() }
+                        for (i in controls.dropLast(1)) { cur[i] = v[i]; split += cur.copyOf() }
+                    }
+                }
+                split += v
+            }
+            newStart[vecs.size] = split.size
+            val remapped = phases.map { (nm, r) -> nm to (newStart[r.first] until newStart[r.last + 1]) }
+            vecs.clear(); vecs += split
+            phases.clear(); phases += remapped
         }
         val strs = vecs.map { String(it) }
         val res = simulate(model, names, strs)
