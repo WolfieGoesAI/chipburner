@@ -54,6 +54,8 @@ class AppState(app: Application) : AndroidViewModel(app) {
     var allowSize by mutableStateOf(prefs.getBoolean("allowSize", false)); private set
     var noErase by mutableStateOf(prefs.getBoolean("noErase", false)); private set
     var noVerify by mutableStateOf(prefs.getBoolean("noVerify", false)); private set
+    var unprotect by mutableStateOf(prefs.getBoolean("unprotect", false)); private set
+    var protectAfter by mutableStateOf(prefs.getBoolean("protectAfter", false)); private set
 
     // Connection: 0 ZIF socket, 1 ICSP powered by the programmer (-i), 2 ICSP, board powers itself (-I)
     var connection by mutableIntStateOf(prefs.getInt("connection", 0)); private set
@@ -151,6 +153,8 @@ class AppState(app: Application) : AndroidViewModel(app) {
             "allowSize" -> allowSize = value
             "noErase" -> noErase = value
             "noVerify" -> noVerify = value
+            "unprotect" -> unprotect = value
+            "protectAfter" -> protectAfter = value
         }
         prefs.edit().putBoolean(key, value).apply()
     }
@@ -159,6 +163,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
         get() = listOfNotNull(
             "skip ID".takeIf { skipId }, "any size".takeIf { allowSize },
             "no erase".takeIf { noErase }, "no verify".takeIf { noVerify },
+            "unprotect".takeIf { unprotect }, "protect after write".takeIf { protectAfter },
         ).joinToString(", ").ifEmpty { "standard" }
 
     sealed class EraseMethod {
@@ -196,6 +201,13 @@ class AppState(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Write protection (as on the Mac): -u turns it off before writing or erasing, -P turns it on after writing. */
+    private fun protectionArgs(kind: String): List<String> = when (kind) {
+        "write" -> listOfNotNull("-u".takeIf { unprotect }, "-P".takeIf { protectAfter })
+        "erase" -> listOfNotNull("-u".takeIf { unprotect })
+        else -> emptyList()
+    }
+
     private fun optionArgs(kind: String): List<String> {
         val a = ArrayList<String>()
         if (skipId) a += if (kind == "read") "-x" else "-y"
@@ -204,6 +216,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
             if (noErase) a += "-e"
             if (noVerify) a += "-v"
         }
+        a += protectionArgs(kind)
         return a
     }
 
@@ -361,7 +374,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
         if (!needsProgrammer()) return
         val size = chipInfo!!.codeSize
         val readArgs = listOf("-p", chip) + (if (skipId) listOf("-x") else emptyList())
-        val writeArgs = listOf("-p", chip) + (if (skipId) listOf("-y") else emptyList()) + (if (allowSize) listOf("-s") else emptyList())
+        val writeArgs = listOf("-p", chip) + (if (skipId) listOf("-y") else emptyList()) + (if (allowSize) listOf("-s") else emptyList()) + protectionArgs("write")
         val steps = ArrayList<TestStep>()
         if (kind == "sram") {
             val patterns = ArrayList<ChipTests.Pattern>()
@@ -555,7 +568,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
                     if (minipro.stopRequested) return@runJob
                     val f = tempFile("erase-fill.bin")
                     f.writeBytes(ByteArray(size) { 0xFF.toByte() })
-                    runJob("Fill $chip with FF", listOf("-p", chip, "-w", f.path, "-e")) { ok, _ ->
+                    runJob("Fill $chip with FF", listOf("-p", chip, "-w", f.path, "-e") + protectionArgs("erase")) { ok, _ ->
                         if (!minipro.stopRequested) message = if (ok) "$chip erased" to "All $size bytes were written with FF and verified." else "Filling with FF failed" to lastLines()
                     }
                 }

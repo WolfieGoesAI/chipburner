@@ -303,6 +303,8 @@ private fun OptionsDialog(state: AppState, onDismiss: () -> Unit) {
                     Triple("allowSize", "Allow file size mismatch", state.allowSize),
                     Triple("noErase", "Don't erase before programming", state.noErase),
                     Triple("noVerify", "Don't verify after programming", state.noVerify),
+                    Triple("unprotect", "Unprotect before writing", state.unprotect),
+                    Triple("protectAfter", "Protect after writing", state.protectAfter),
                 )) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         Checkbox(checked = value, onCheckedChange = { state.setOption(key, it) },
