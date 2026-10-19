@@ -446,5 +446,19 @@ if let xml = try? String(contentsOfFile: args[2]) {
     print("LOGICMODELS: \(have) of \(all.count) logic chip names have an exhaustive or sequence test")
 }
 
+// Health check: reads are compared one at a time with the first
+do {
+    let base = Data((0..<8).map { UInt8($0) })
+    let acc = ChipTests.StabilityAccumulator(base: base)
+    var b = base; b[3] = 0x13
+    var c = base; c[3] = 0x13; c[5] = 0x45
+    acc.add(base); acc.add(b); acc.add(base); acc.add(c)
+    let r = acc.result()
+    let c3 = r.counts.first { $0.address == 3 }?.counts.map { "\($0.value)x\($0.count)" } ?? []
+    let c5 = r.counts.first { $0.address == 5 }?.counts.map { "\($0.value)x\($0.count)" } ?? []
+    expect(acc.reads == 5 && r.unstableBytes == 2 && r.unstableBits == 0x50 && c3 == ["3x3", "19x2"] && c5 == ["5x4", "69x1"],
+           "health check counts unstable bytes read by read (\(r.unstableBytes), \(c3), \(c5))")
+}
+
 print(failed ? "DBTEST FAILED" : "DBTEST OK")
 exit(failed ? 1 : 0)
