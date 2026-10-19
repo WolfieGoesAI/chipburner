@@ -45,6 +45,10 @@ object LogicModels {
         val rest: List<Pair<String, Boolean>> = emptyList(),
         val clocks: List<String> = emptyList(),
         val full: Int = 0,
+        /** More inputs that change one at a time in the sequence test (see LogicDsl). */
+        val controls: List<String> = emptyList(),
+        /** A bus transceiver: control levels for A→B and for B→A. */
+        val transceiver: Pair<List<Pair<String, Char>>, List<Pair<String, Char>>>? = null,
     )
 
     val gateOps = mapOf(
@@ -400,7 +404,9 @@ object LogicModels {
             "4013" -> Model(m4013, true, listOf("1S" to false, "1R" to false, "2S" to false, "2R" to false), listOf("1CLK", "2CLK"))
             "4017" -> Model(m4017, true, listOf("RST" to false, "/CE" to false), listOf("CLK"), 24)
             "4040" -> Model(m4040, true, listOf("RST" to false), listOf("CLK"), 4100)
-            else -> null
+            else -> LogicDsl.defs[chip]?.takeIf { it.pins == names }?.let { d ->
+                Model({ LogicDsl.step(d, it) }, d.sequential, d.rest, d.clocks, d.full, d.controls, d.transceiver)
+            }
         }
     }
 
@@ -466,6 +472,13 @@ object LogicModels {
             val roles = items.map { it.first() }
             if (model(key, names) != null) return Triple(key, names, roles)
         }
+        // models from logic-models.txt
+        for (m in listOf(chip) + group.names) {
+            val base = Pinouts.logicBase(m)
+            val d = LogicDsl.defs[m] ?: LogicDsl.defs[base] ?: continue
+            if (d.pins.size != group.pins) continue
+            if (model(d.key, d.pins) != null) return Triple(d.key, d.pins, d.roles)
+        }
         return null
     }
 
@@ -482,19 +495,32 @@ object LogicModels {
             if (vecs.size > start) phases += name to (start until vecs.size)
         }
         val description: String
-        if (chip == "74245") {
-            fun mk(dir: Char, side: String, value: Int): CharArray {
+        val xcvr = model.transceiver ?: if (chip == "74245") (listOf("DIR" to '1', "/OE" to '0') to listOf("DIR" to '0', "/OE" to '0')) else null
+        if (xcvr != null) {
+            val width = (1..32).takeWhile { "A$it" in names && "B$it" in names }.size
+            val count = 1 shl width
+            fun mk(set: List<Pair<String, Char>>, side: String, value: Int): CharArray {
                 val v = base.toCharArray()
-                names.indexOf("DIR").takeIf { it >= 0 }?.let { v[it] = dir }
-                names.indexOf("/OE").takeIf { it >= 0 }?.let { v[it] = '0' }
-                for (k in 0 until 8) names.indexOf("$side${k + 1}").takeIf { it >= 0 }?.let { v[it] = if ((value shr k) and 1 == 1) '1' else '0' }
+                for ((n, c) in set) names.indexOf(n).takeIf { it >= 0 }?.let { v[it] = c }
+                for (k in 0 until width) names.indexOf("$side${k + 1}").takeIf { it >= 0 }?.let { v[it] = if ((value shr k) and 1 == 1) '1' else '0' }
                 return v
             }
-            phase("A→B, all 256 patterns") { for (value in 0 until 256) vecs += mk('1', "A", value) }
-            phase("B→A, all 256 patterns") { for (value in 0 until 256) vecs += mk('0', "B", value) }
-            description = "all 256 patterns A→B and all 256 B→A (neighbour-pin patterns included)"
+            phase("A→B, all $count patterns") { for (value in 0 until count) vecs += mk(xcvr.first, "A", value) }
+            phase("B→A, all $count patterns") { for (value in 0 until count) vecs += mk(xcvr.second, "B", value) }
+            description = "all $count patterns A→B and all $count B→A (neighbour-pin patterns included)"
+        } else if (!model.sequential && inputs.size > 12) {
+            // too many inputs for every combination: neighbour-pin patterns and 2048 random combinations
+            val rng = LCG(0x5EEDuL xor chip.sumOf { it.code }.toULong())
+            fun pat(f: (Int) -> Boolean): CharArray { val v = base.toCharArray(); for (i in inputs) v[i] = if (f(i)) '1' else '0'; return v }
+            phase("neighbour-pin patterns") {
+                vecs += pat { false }; vecs += pat { true }
+                vecs += pat { it % 2 == 0 }; vecs += pat { it % 2 == 1 }
+                for (k in inputs) vecs += pat { it == k }
+                for (k in inputs) vecs += pat { it != k }
+            }
+            phase("random combinations") { repeat(2048) { vecs += pat { rng.chance(0.5) } } }
+            description = "neighbour-pin patterns and 2048 random combinations of the ${inputs.size} inputs"
         } else if (!model.sequential) {
-            if (inputs.size > 12) return null
             phase("input combinations") {
                 for (k in 0 until (1 shl inputs.size)) {
                     val v = base.toCharArray()
@@ -556,7 +582,8 @@ object LogicModels {
             // The TL866A sets a step's pins one after another (pin 1 first), so a step that changes data and a
             // control, clock level or latch enable together races: data on pins below the control arrives before
             // it, data above after it. Split such steps: data first, then each control on its own, then the step.
-            val ctrl = inputs.filter { names[it] in restMap || names[it] in clocks }.toSet()
+            // A step with a clock pulse changes nothing else, so every level is set up before the edge.
+            val ctrl = inputs.filter { names[it] in restMap || names[it] in clocks || names[it] in model.controls }.toSet()
             val split = ArrayList<CharArray>()
             val newStart = IntArray(vecs.size + 1)
             for ((n, v) in vecs.withIndex()) {
@@ -565,9 +592,11 @@ object LogicModels {
                     val cur = vecs[n - 1].map { if (it == 'C') '0' else it }.toCharArray()
                     val data = inputs.filter { it !in ctrl && cur[it] != v[it] }
                     val controls = inputs.filter { it in ctrl && v[it] != 'C' && cur[it] != v[it] }
-                    if ((data.isNotEmpty() && controls.isNotEmpty()) || controls.size > 1) {
+                    // a clock pulse gets a step of its own, after every other change (setup time)
+                    val pulse = inputs.any { v[it] == 'C' } && (data.isNotEmpty() || controls.isNotEmpty())
+                    if (pulse || (data.isNotEmpty() && controls.isNotEmpty()) || controls.size > 1) {
                         if (data.isNotEmpty()) { for (i in data) cur[i] = v[i]; split += cur.copyOf() }
-                        for (i in controls.dropLast(1)) { cur[i] = v[i]; split += cur.copyOf() }
+                        for (i in if (pulse) controls else controls.dropLast(1)) { cur[i] = v[i]; split += cur.copyOf() }
                     }
                 }
                 split += v
@@ -582,7 +611,9 @@ object LogicModels {
         var checks = 0
         val out = strs.zip(res).map { (v, r) ->
             val w = v.toCharArray()
-            for ((i, value) in r) if ((roles[i] == 'o' || roles[i] == 'b') && w[i] == 'X') { w[i] = if (value) 'H' else 'L'; checks++ }
+            for ((i, value) in r) if ((roles[i] == 'o' || roles[i] == 'b' || roles[i] == 'z' || roles[i] == 'y') && w[i] == 'X') {
+                w[i] = if (roles[i] == 'z' || roles[i] == 'y') (if (value) 'Z' else 'L') else if (value) 'H' else 'L'; checks++
+            }
             String(w)
         }
         return Extended(out, checks, description, phases)

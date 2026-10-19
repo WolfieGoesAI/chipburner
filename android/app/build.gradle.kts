@@ -21,6 +21,9 @@ android {
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
     }
 
+    // logic-models.txt is shared with the Mac app
+    sourceSets["main"].assets.srcDir("../../Resources/logic")
+
     signingConfigs {
         create("release") {
             storeFile = file("../keystore/chipburner.jks")

@@ -70,6 +70,8 @@ enum LogicModels {
         var rest: [(String, Bool)] = []    // control pins and their inactive level
         var clocks: [String] = []
         var full = 0                       // clock pulses in the full-cycle part
+        var controls: [String] = []        // more inputs that change one at a time in the sequence test
+        var transceiver: (ab: [(String, Character)], ba: [(String, Character)])? = nil   // bus transceiver controls
     }
 
     // MARK: Combinational
@@ -441,7 +443,11 @@ enum LogicModels {
         case "4013": return Model(step: m4013, sequential: true, rest: [("1S", false), ("1R", false), ("2S", false), ("2R", false)], clocks: ["1CLK", "2CLK"])
         case "4017": return Model(step: m4017, sequential: true, rest: [("RST", false), ("/CE", false)], clocks: ["CLK"], full: 24)
         case "4040": return Model(step: m4040, sequential: true, rest: [("RST", false)], clocks: ["CLK"], full: 4100)
-        default: return nil
+        default:
+            LogicDsl.ensureLoaded()
+            guard let d = LogicDsl.defs[chip], d.pins == names else { return nil }
+            return Model(step: { LogicDsl.step(d, $0) }, sequential: d.sequential, rest: d.rest, clocks: d.clocks,
+                         full: d.full, controls: d.controls, transceiver: d.transceiver)
         }
     }
 
@@ -520,6 +526,13 @@ enum LogicModels {
             let roles = items.map { $0.first ?? "i" }
             if model(for: key, names: names) != nil { return (key, names, roles) }
         }
+        // models from logic-models.txt
+        LogicDsl.ensureLoaded()
+        for m in members {
+            let base = Pinouts.logicBase(m)
+            guard let d = LogicDsl.defs[m] ?? LogicDsl.defs[base], d.pins.count == v.pins else { continue }
+            if model(for: d.key, names: d.pins) != nil { return (d.key, d.pins, d.roles) }
+        }
         return nil
     }
 
@@ -536,19 +549,34 @@ enum LogicModels {
             if vecs.count > start { phases.append((name, start..<vecs.count)) }
         }
         var description = ""
-        if chip == "74245" {
-            func mk(_ dir: Character, _ side: String, _ value: Int) -> [Character] {
+        var transceiver = model.transceiver
+        if transceiver == nil && chip == "74245" { transceiver = (ab: [("DIR", "1"), ("/OE", "0")], ba: [("DIR", "0"), ("/OE", "0")]) }
+        if let xcvr = transceiver {
+            var width = 0
+            while width < 32 && names.contains("A\(width + 1)") && names.contains("B\(width + 1)") { width += 1 }
+            let count = 1 << width
+            func mk(_ set: [(String, Character)], _ side: String, _ value: Int) -> [Character] {
                 var v = base
-                if let i = names.firstIndex(of: "DIR") { v[i] = dir }
-                if let i = names.firstIndex(of: "/OE") { v[i] = "0" }
-                for k in 0..<8 { if let i = names.firstIndex(of: "\(side)\(k + 1)") { v[i] = (value >> k) & 1 == 1 ? "1" : "0" } }
+                for (n, c) in set { if let i = names.firstIndex(of: n) { v[i] = c } }
+                for k in 0..<width { if let i = names.firstIndex(of: "\(side)\(k + 1)") { v[i] = (value >> k) & 1 == 1 ? "1" : "0" } }
                 return v
             }
-            phase("A→B, all 256 patterns") { for value in 0..<256 { vecs.append(mk("1", "A", value)) } }
-            phase("B→A, all 256 patterns") { for value in 0..<256 { vecs.append(mk("0", "B", value)) } }
-            description = "all 256 patterns A→B and all 256 B→A (neighbour-pin patterns included)"
+            phase("A→B, all \(count) patterns") { for value in 0..<count { vecs.append(mk(xcvr.ab, "A", value)) } }
+            phase("B→A, all \(count) patterns") { for value in 0..<count { vecs.append(mk(xcvr.ba, "B", value)) } }
+            description = "all \(count) patterns A→B and all \(count) B→A (neighbour-pin patterns included)"
+        } else if !model.sequential && inputs.count > 12 {
+            // too many inputs for every combination: neighbour-pin patterns and 2048 random combinations
+            var rng = LCG(x: 0x5EED ^ UInt64(chip.unicodeScalars.reduce(0) { $0 + Int($1.value) }))
+            func pat(_ f: (Int) -> Bool) -> [Character] { var v = base; for i in inputs { v[i] = f(i) ? "1" : "0" }; return v }
+            phase("neighbour-pin patterns") {
+                vecs.append(pat { _ in false }); vecs.append(pat { _ in true })
+                vecs.append(pat { $0 % 2 == 0 }); vecs.append(pat { $0 % 2 == 1 })
+                for k in inputs { vecs.append(pat { $0 == k }) }
+                for k in inputs { vecs.append(pat { $0 != k }) }
+            }
+            phase("random combinations") { for _ in 0..<2048 { vecs.append(pat { _ in rng.chance(0.5) }) } }
+            description = "neighbour-pin patterns and 2048 random combinations of the \(inputs.count) inputs"
         } else if !model.sequential {
-            guard inputs.count <= 12 else { return nil }
             phase("input combinations") {
                 for k in 0..<(1 << inputs.count) {
                     var v = base
@@ -614,7 +642,8 @@ enum LogicModels {
             // The TL866A sets a step's pins one after another (pin 1 first), so a step that changes data and a
             // control, clock level or latch enable together races: data on pins below the control arrives before
             // it, data above after it. Split such steps: data first, then each control on its own, then the step.
-            let ctrl = Set(inputs.filter { restDict[names[$0]] != nil || clocks.contains(names[$0]) })
+            // A step with a clock pulse changes nothing else, so every level is set up before the edge.
+            let ctrl = Set(inputs.filter { restDict[names[$0]] != nil || clocks.contains(names[$0]) || model.controls.contains(names[$0]) })
             var split: [[Character]] = []
             var newStart = [Int](repeating: 0, count: vecs.count + 1)
             for (n, v) in vecs.enumerated() {
@@ -623,9 +652,10 @@ enum LogicModels {
                     var cur = vecs[n - 1].map { $0 == "C" ? Character("0") : $0 }
                     let data = inputs.filter { !ctrl.contains($0) && cur[$0] != v[$0] }
                     let controls = inputs.filter { ctrl.contains($0) && v[$0] != "C" && cur[$0] != v[$0] }
-                    if (!data.isEmpty && !controls.isEmpty) || controls.count > 1 {
+                    let pulse = inputs.contains { v[$0] == "C" } && (!data.isEmpty || !controls.isEmpty)
+                    if pulse || (!data.isEmpty && !controls.isEmpty) || controls.count > 1 {
                         if !data.isEmpty { for i in data { cur[i] = v[i] }; split.append(cur) }
-                        for i in controls.dropLast() { cur[i] = v[i]; split.append(cur) }
+                        for i in (pulse ? controls : Array(controls.dropLast())) { cur[i] = v[i]; split.append(cur) }
                     }
                 }
                 split.append(v)
@@ -639,8 +669,8 @@ enum LogicModels {
         var checks = 0
         for (v, r) in zip(vecs, res) {
             var w = v
-            for (i, value) in r where (roles[i] == "o" || roles[i] == "b") && w[i] == "X" {
-                w[i] = value ? "H" : "L"
+            for (i, value) in r where (roles[i] == "o" || roles[i] == "b" || roles[i] == "z" || roles[i] == "y") && w[i] == "X" {
+                w[i] = roles[i] == "z" || roles[i] == "y" ? (value ? "Z" : "L") : (value ? "H" : "L")
                 checks += 1
             }
             out.append(w)

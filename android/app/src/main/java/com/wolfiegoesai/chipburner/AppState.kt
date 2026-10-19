@@ -77,6 +77,8 @@ class AppState(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             minipro.prepareDatabase()
             db.load()
+            // logic chip models for the Extended Logic Test (shared with the Mac app)
+            runCatching { LogicDsl.load(ctx.assets.open("logic-models.txt").bufferedReader().use { it.readText() }) }
             withContext(Dispatchers.Main) {
                 dbReady = true
                 addLog("Chip database: ${db.all.size} entries. ${minipro.sourceInfo.lines().firstOrNull() ?: ""}")

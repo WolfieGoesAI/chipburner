@@ -345,19 +345,23 @@ do {
 // Logic chip models (Extended Logic Test): each must agree with minipro's own vectors, and the generated
 // sequences must match the reference generator the models were developed with.
 let expectedExtended: [String: (Int, Int, UInt64)] = [
+    "4001": (256, 1024, 0xcecb16b5fbac0ae5),
+    "4011": (256, 1024, 0x88d1e3ba18dc9485),
+    "4013": (1120, 4466, 0xa3cd1236a70976c5),
+    "4017": (642, 7062, 0x8f3a3204554390fc),
+    "4040": (4666, 55992, 0x9fa54c7e3927d9fa),
+    "4049": (64, 384, 0x65872d8dfd8ab865),
+    "4050": (64, 384, 0x0b57060e268ada15),
+    "4070": (256, 1024, 0xe847e4d74babe545),
+    "4071": (256, 1024, 0x2c469fca26ef29c5),
+    "4081": (256, 1024, 0x40c841e6ffe776e5),
+    "4093": (256, 1024, 0x88d1e3ba18dc9485),
     "7400": (256, 1024, 0xa28297e3d9a12a75),
     "7402": (256, 1024, 0x74fc1ce417dd9345),
     "7404": (64, 384, 0x492233cfe3d77265),
     "7408": (256, 1024, 0x47d3a23f08195d15),
     "7410": (512, 1536, 0x9604c1979eeab4b5),
     "7411": (512, 1536, 0xa6fa855e411dd555),
-    "7420": (256, 512, 0x7589a47ebeeea86d),
-    "7421": (256, 512, 0xa1d69b927d41a28d),
-    "7427": (512, 1536, 0xb1871c1f926cc6d5),
-    "7430": (256, 256, 0x73179affd0ed9531),
-    "7432": (256, 1024, 0xe09f26e63534dd75),
-    "7474": (793, 3162, 0x3338177d20326d19),
-    "7486": (256, 1024, 0xb4f6a2048e139845),
     "74125": (256, 512, 0x9a8414036166ee15),
     "74126": (256, 512, 0x35679807b95e1db5),
     "74138": (64, 512, 0x4874eb594c71b26d),
@@ -365,41 +369,37 @@ let expectedExtended: [String: (Int, Int, UInt64)] = [
     "74151": (4096, 8192, 0x82fd772942dc5905),
     "74153": (4096, 8192, 0xe0962355b0093725),
     "74157": (1024, 4096, 0xdf9d44be2be3f365),
-    "74161": (895, 4475, 0x28aedab3bdeecf60),
-    "74160": (892, 3991, 0x216c989dca2cd10f),
-    "74162": (840, 3445, 0xe6559e60f1508974),
-    "74163": (902, 4315, 0x57faaf9f7c956c90),
-    "74164": (604, 4832, 0x5092528b03f23f1d),
-    "74165": (758, 1516, 0x59c6c59d677c490c),
-    "74174": (605, 3630, 0xf07bfa62ac212687),
-    "74175": (612, 4896, 0x211a220e8bfb1ba8),
-    "74193": (1037, 6222, 0x1181f658a0c13bb4),
+    "74160": (1200, 5372, 0xa51944ad10d1ce5e),
+    "74161": (1198, 5990, 0x5a47b704d18b42ba),
+    "74162": (1151, 4712, 0xd15f8e44533f3615),
+    "74163": (1217, 5785, 0xa09c72de4bbc54e4),
+    "74164": (843, 6744, 0x29d53de556efdf70),
+    "74165": (1097, 2194, 0x38e01b928374e937),
+    "74174": (927, 5562, 0xfad86e4caef7750e),
+    "74175": (905, 7240, 0xe18baa20be0f7219),
+    "74193": (1352, 8112, 0x41275907171345ce),
+    "7420": (256, 512, 0x7589a47ebeeea86d),
+    "7421": (256, 512, 0xa1d69b927d41a28d),
     "74240": (1024, 4096, 0x7f4593647e0f94a5),
     "74244": (1024, 4096, 0x220fa476fa80cfe5),
     "74245": (512, 4096, 0xdeeee17707065625),
-    "74273": (628, 5024, 0xcfed1267784b9b86),
+    "7427": (512, 1536, 0xb1871c1f926cc6d5),
+    "74273": (934, 7472, 0x8300b1e6c472abb6),
+    "7430": (256, 256, 0x73179affd0ed9531),
+    "7432": (256, 1024, 0xe09f26e63534dd75),
     "74373": (860, 5976, 0x2221ce3c8bcfd046),
-    "74374": (640, 4208, 0x9c10727cc1360fa1),
-    "74393": (594, 4744, 0x964b83482e63ec15),
+    "74374": (960, 6504, 0x493b6c3339de6608),
+    "74393": (683, 5456, 0xfa1de3b6a4470eb9),
     "74541": (1024, 2048, 0x8c12902423ba33e5),
     "74573": (877, 6104, 0x72d8440dbf7c7918),
-    "74574": (615, 4232, 0x8522b8d4b3711c73),
-    "74595": (649, 5193, 0xe748c4cef4f6a7e4),
+    "74574": (928, 6576, 0x62623743178c0173),
+    "74595": (856, 6848, 0x39b99a98b5d64cfb),
+    "7474": (1078, 4302, 0x207b391c2db1f500),
     "7483": (512, 2560, 0xf7f7d0b76d8b3c3d),
     "7485": (2048, 6144, 0x571f826f7d1114b5),
-    "7490": (658, 2480, 0x7a216bd5b8ef7eab),
-    "7493": (578, 2180, 0xbc5a03775348f32e),
-    "4001": (256, 1024, 0xcecb16b5fbac0ae5),
-    "4011": (256, 1024, 0x88d1e3ba18dc9485),
-    "4071": (256, 1024, 0x2c469fca26ef29c5),
-    "4081": (256, 1024, 0x40c841e6ffe776e5),
-    "4070": (256, 1024, 0xe847e4d74babe545),
-    "4093": (256, 1024, 0x88d1e3ba18dc9485),
-    "4013": (837, 3334, 0xa9879c3c11694f1c),
-    "4017": (572, 6292, 0x3f83fffe09dce206),
-    "4040": (4624, 55488, 0x37b8a5305f85b18c),
-    "4049": (64, 384, 0x65872d8dfd8ab865),
-    "4050": (64, 384, 0x0b57060e268ada15),
+    "7486": (256, 1024, 0xb4f6a2048e139845),
+    "7490": (811, 3092, 0x3ba182e443621c9a),
+    "7493": (654, 2484, 0x3d9d0df639f6a5c5),
 ]
 if let xml = try? String(contentsOfFile: args[2]) {
     var problems: [String] = [], modelled = 0
@@ -433,6 +433,64 @@ if let xml = try? String(contentsOfFile: args[2]) {
         if e.phases.map({ $0.range.count }).reduce(0, +) != e.vectors.count { problems.append("\(chip): phases don't cover the vectors") }
     }
     expect(problems.isEmpty && modelled == expectedExtended.count, "logic models agree with minipro's vectors (\(modelled) models)" + (problems.isEmpty ? "" : ": " + problems.prefix(10).joined(separator: "; ")))
+
+    // Models from logic-models.txt: they must agree with minipro's vectors, give the reference test vectors
+    // (the Android build generates the same ones) and be free of pin-order races.
+    if args.count > 3, let modelText = try? String(contentsOfFile: args[3]) {
+        let errors = LogicDsl.load(modelText)
+        expect(errors.isEmpty, "logic-models.txt parses" + (errors.isEmpty ? "" : ": " + errors.prefix(5).joined(separator: "; ")))
+        var dslProblems: [String] = [], dslCount = 0
+        var seenDefs = Set<String>()
+        for (_, d) in LogicDsl.defs.sorted(by: { $0.key < $1.key }) where seenDefs.insert(d.key).inserted {
+            dslCount += 1
+            guard let model = LogicModels.model(for: d.key, names: d.pins) else { dslProblems.append("\(d.key): no model"); continue }
+            var groupsSeen = 0, checks = 0
+            for g in allLogicGroups(xml) where g.names.contains(where: { d.names.contains($0) || d.names.contains(Pinouts.logicBase($0)) }) && g.pins == d.pins.count {
+                groupsSeen += 1
+                // minipro's vectors may depend on the order the pins are set in: the best of the plausible orders must agree
+                var best = Int.max
+                for res in [LogicModels.simulate(model, names: d.pins, vectors: g.vectors),
+                            simulateOrdered(LogicModels.model(for: d.key, names: d.pins)!, names: d.pins, vectors: g.vectors, ascending: true),
+                            simulateGrouped(LogicModels.model(for: d.key, names: d.pins)!, names: d.pins, vectors: g.vectors)] {
+                    var bad = 0, n = 0
+                    for (vec, r) in zip(g.vectors, res) {
+                        for (i, c) in vec.enumerated() where c == "L" || c == "H" || c == "Z" {
+                            guard let m = r[i] else { continue }
+                            n += 1
+                            if m != (c != "L") { bad += 1 }
+                        }
+                    }
+                    if bad < best { best = bad; checks = n }
+                }
+                if best > 0 { dslProblems.append("\(d.key): \(best) mismatches with \(g.names.joined(separator: ","))") }
+            }
+            if groupsSeen == 0 { dslProblems.append("\(d.key): not in the logic database"); continue }
+            if checks == 0 { dslProblems.append("\(d.key): no outputs checked") }
+            guard let e = LogicModels.extended(chip: d.key, names: d.pins, roles: d.roles) else { dslProblems.append("\(d.key): no extended test"); continue }
+            let fp = LogicModels.fingerprint(e.vectors)
+            if let x = expectedDsl[d.key] {
+                if x.0 != e.vectors.count || x.1 != e.checks || x.2 != fp {
+                    dslProblems.append("\(d.key): extended \(e.vectors.count)/\(e.checks)/\(String(fp, radix: 16)) vs reference \(x.0)/\(x.1)/\(String(x.2, radix: 16))")
+                }
+            } else { dslProblems.append("\(d.key): no reference") }
+            if raceMismatches(d.key, names: d.pins, e) > 0 { dslProblems.append("\(d.key): pin-order race") }
+            let t = LogicTest(name: d.key, pins: d.pins.count, voltage: "5V", vectors: e.vectors)
+            if !t.problems().isEmpty { dslProblems.append("\(d.key): " + t.problems()[0]) }
+            if e.phases.map({ $0.range.count }).reduce(0, +) != e.vectors.count { dslProblems.append("\(d.key): phases don't cover the vectors") }
+        }
+        expect(dslProblems.isEmpty && dslCount == expectedDsl.count, "logic-models.txt models agree with minipro's vectors (\(dslCount) models)" + (dslProblems.isEmpty ? "" : ": " + dslProblems.prefix(10).joined(separator: "; ")))
+        var raced: [String] = []
+        for (chip, entry) in Pinouts.logicNames.sorted(by: { $0.key < $1.key }) {
+            let items = entry.pins.split(separator: " ")
+            let names = items.map { String($0.split(separator: ":", maxSplits: 1).last ?? "") }
+            let roles = items.map { $0.first ?? "i" }
+            guard LogicModels.model(for: chip, names: names) != nil, let e = LogicModels.extended(chip: chip, names: names, roles: roles) else { continue }
+            if raceMismatches(chip, names: names, e) > 0 { raced.append(chip) }
+        }
+        expect(raced.isEmpty, "built-in models' extended tests are free of pin-order races" + (raced.isEmpty ? "" : ": " + raced.joined(separator: ", ")))
+    } else {
+        expect(false, "logic-models.txt not given to the dbtest")
+    }
     let g = LogicModels.pins(for: "74132", xml: xml)
     expect(g?.key == "7400", "74132 is tested with the 7400 model")
     expect(LogicModels.pins(for: "74LS161", xml: xml)?.key == "74161" || LogicModels.pins(for: "74161", xml: xml)?.key == "74161", "74161 model found")
@@ -458,6 +516,281 @@ do {
     let c5 = r.counts.first { $0.address == 5 }?.counts.map { "\($0.value)x\($0.count)" } ?? []
     expect(acc.reads == 5 && r.unstableBytes == 2 && r.unstableBits == 0x50 && c3 == ["3x3", "19x2"] && c5 == ["5x4", "69x1"],
            "health check counts unstable bytes read by read (\(r.unstableBytes), \(c3), \(c5))")
+}
+
+
+// MARK: Helpers for the logic model checks
+
+let expectedDsl: [String: (Int, Int, UInt64)] = [
+    "4000": (128, 384, 0x4080ef7668c71aed),
+    "4002": (256, 512, 0xd36fc18857c4e4cd),
+    "4008": (512, 2560, 0x9079ec4c86ef167d),
+    "4009": (64, 384, 0x241dcb4137ba82a5),
+    "4010": (64, 384, 0x09a381e35463eb55),
+    "40104": (1079, 3626, 0xd6be93c77f55c2a4),
+    "4012": (256, 512, 0x527ba57ce360942d),
+    "4015": (914, 7296, 0x03909e7bb88aaa1d),
+    "40161": (1153, 5765, 0xcae5e3b698111d05),
+    "40162": (1196, 5423, 0x553ec20859ad07e6),
+    "40163": (1217, 5790, 0x8cde15190e8c689b),
+    "40174": (894, 5364, 0x80dd4f109871b57a),
+    "40175": (899, 7192, 0x9a2036aaac4605c0),
+    "4019": (1024, 4096, 0x5da0bf786dc2d8d5),
+    "40192": (1308, 4872, 0x634dcec6a06dc9a3),
+    "40193": (1303, 7818, 0xf82350e3c8c1d8f2),
+    "4020": (4679, 56148, 0x475d45d78b60bfa8),
+    "4021": (971, 2913, 0xd2eea51e1abc5cb0),
+    "4022": (670, 6030, 0x868cdc61dc8beeee),
+    "4023": (512, 1536, 0x29cae5e4aefbc8a5),
+    "4024": (709, 4963, 0xf2c2e75d518d998a),
+    "4025": (512, 1536, 0xe68f960f1fd1d165),
+    "4027": (1230, 4906, 0x476aaecaaef1881e),
+    "4028": (16, 160, 0x259b1ff79eaf954d),
+    "4030": (256, 1024, 0xe847e4d74babe545),
+    "4041": (16, 128, 0x3e0987da9d5e77cd),
+    "4042": (716, 5728, 0xb0d7c1f7d17827a5),
+    "4043": (878, 3012, 0xd7fddb4c6d03b286),
+    "4044": (863, 2928, 0x451e61b1f1a3d136),
+    "4060": (4677, 56124, 0xbaf49ed0bf0c1d00),
+    "4063": (2048, 6144, 0x4a3937c425206b15),
+    "4068": (256, 256, 0x4d99f96429b07869),
+    "4072": (256, 512, 0x2edd11d8475e003d),
+    "4073": (512, 1536, 0xcf33a638d329e285),
+    "4075": (512, 1536, 0xb6fa56daa8ea4dc5),
+    "4076": (1240, 3880, 0xf2fc8bec0ea4cbd4),
+    "4077": (256, 1024, 0x9ccc681c61b9a5c5),
+    "4078": (256, 256, 0x08afad6e2a2d3bf1),
+    "4082": (256, 512, 0x407b37fd6612279d),
+    "4099": (1205, 9619, 0xda7ae5bedbdf1630),
+    "4503": (256, 768, 0xd94b71b0066e6d05),
+    "4510": (1165, 5482, 0x2d3ab62b3dc9e2f6),
+    "4511": (605, 4235, 0x30ed3c1308bccb70),
+    "4512": (2078, 1038, 0x901ac767fdea5897),
+    "4514": (826, 13216, 0xcbb92892cf239144),
+    "4515": (826, 13216, 0x4861a3bc07a0a622),
+    "4516": (1201, 6005, 0x4954bf94354c732f),
+    "4518": (785, 6272, 0x09a9c7fe5d9558cb),
+    "4519": (1024, 4096, 0x1522591a2799f685),
+    "4520": (821, 6560, 0xb93f724f6f3119b7),
+    "4531": (2078, 2078, 0xe93678e83b2bc58c),
+    "4532": (512, 2560, 0xda9d929c2913674d),
+    "4543": (595, 4165, 0xc20f7a7490be8b40),
+    "4555": (64, 512, 0x4685b720731786a5),
+    "4556": (64, 512, 0xa11f23095fe0e625),
+    "4572": (256, 1536, 0xb3c4923b7d0125e5),
+    "7401": (256, 1024, 0xac164413b1842615),
+    "7403": (256, 1024, 0x5b8163519e01f6e5),
+    "7405@OC": (64, 384, 0x2c9d11b0cbcca4d5),
+    "7407": (64, 384, 0xff46f3f0524822e5),
+    "7407@OC": (64, 384, 0x802f91aa6cea58f5),
+    "7409": (256, 1024, 0x1ec6da1e5df58c25),
+    "74107": (993, 3964, 0x8259a67b08849888),
+    "74109": (1179, 4700, 0xff270a21b50d8036),
+    "74112": (1156, 4610, 0x34a52a85ad4cdbc1),
+    "74113": (983, 3924, 0xf211f6146373b36c),
+    "74114": (1083, 4324, 0x1a86418384b1e05c),
+    "74133": (2078, 2078, 0x3d41fab60c3e318a),
+    "74136": (256, 1024, 0x0a1ad250cf565685),
+    "74137": (595, 4760, 0x3bf3723794ee5dcd),
+    "74147": (512, 2048, 0x54fe55ee773aa861),
+    "74148": (512, 2560, 0xe0033955105962ad),
+    "7415": (512, 1536, 0x85075505a9e01535),
+    "74150": (2094, 2094, 0x9d9f21cd2c1cf94e),
+    "74154": (64, 1024, 0x23e7664c09147b35),
+    "74155": (64, 512, 0x7eb906eebdf8343d),
+    "74156": (64, 512, 0xef4795b958061e15),
+    "74158": (1024, 4096, 0x4431aee2ae0b43e5),
+    "74166": (1120, 1120, 0x9be050d9cbd16625),
+    "74168": (1190, 5235, 0xf1c2338a36232795),
+    "74173": (1229, 3944, 0x084e0e46780f879e),
+    "74177": (1052, 4208, 0x5984c8f4f634dbde),
+    "74181": (2088, 8352, 0x767b43cba0979986),
+    "74182": (512, 2560, 0x6ad815e1854538fd),
+    "7419": (64, 384, 0x492233cfe3d77265),
+    "74190": (1093, 5882, 0xfef3aa3e52765d1b),
+    "74191": (1105, 6630, 0x5f742c9675c33a50),
+    "74194": (1160, 4640, 0xb5804e97fcfc6bfd),
+    "74195": (1013, 5065, 0x979e92975039c131),
+    "7422": (256, 512, 0x3302973a59b6311d),
+    "74237": (596, 4768, 0x5478c29ea0daef76),
+    "74238": (64, 512, 0x5cd78e686a09ae2d),
+    "7424": (256, 1024, 0xa28297e3d9a12a75),
+    "74241": (1024, 4096, 0xda659d0c7d239a65),
+    "74242": (32, 128, 0x8e75fd36d778d155),
+    "74243": (32, 128, 0x0e21bd45ba5f5875),
+    "74247": (128, 896, 0xcc5f00202cecfaf1),
+    "74248": (128, 896, 0x9963e30e8433a315),
+    "74249": (128, 896, 0x9abb799e21c74589),
+    "74250": (2094, 1064, 0xbe96f466c999ef8f),
+    "74251": (4096, 4096, 0x869a38c6c2c4a705),
+    "74253": (4096, 4096, 0x73e0d04a7de83825),
+    "74257": (1024, 2048, 0xb690ff8a16726a65),
+    "74258": (1024, 2048, 0xf4f96619156d3665),
+    "74259": (1252, 9997, 0x0cb226ae549ea080),
+    "7426": (256, 1024, 0x5b8163519e01f6e5),
+    "74260": (1024, 2048, 0xbf89fd63f57e7425),
+    "74266": (256, 1024, 0x7fd8f0e52f04b365),
+    "74279": (931, 3692, 0xc893cab7d26e498f),
+    "74280": (512, 1024, 0x6176e93d27a7eee5),
+    "74283": (512, 2048, 0xc3a2f89b6eb7c875),
+    "74290": (778, 2972, 0xab2342a9e6cedaf7),
+    "74293": (668, 2536, 0xe83d49dd8d7cd9a2),
+    "74298": (950, 3784, 0x84e37dcda366c4fe),
+    "74347": (128, 896, 0xa8f2d55521018bbd),
+    "74348": (512, 1789, 0x48aaee92f0abebfd),
+    "74365": (256, 384, 0xefdaea7fd62cdfe5),
+    "74366": (256, 384, 0xd057c0911fca7fe5),
+    "74367": (256, 768, 0xd94b71b0066e6d05),
+    "74368": (256, 768, 0x1f3448daef4877e5),
+    "74375": (696, 5556, 0x39b0ad11341ada7c),
+    "74377": (921, 7336, 0x7df7e3c523de3d53),
+    "74378": (934, 5580, 0x09ec47bbb6f9f04e),
+    "74379": (902, 7184, 0x9cf989119b601237),
+    "74390": (716, 5720, 0xcef447322cb2912b),
+    "74395": (1076, 4808, 0x0fbeb54c824f6043),
+    "74399": (971, 3868, 0xb79f20ee0f8111ef),
+    "7442": (16, 160, 0x002de275c064e45d),
+    "74445": (16, 160, 0xb29aa203baddb8b1),
+    "7447": (64, 512, 0xd39c66b9524deda9),
+    "74490": (790, 6304, 0x6bdf525e3f681154),
+    "7450": (1024, 2048, 0xa1292150a93b5545),
+    "7451": (256, 512, 0xe7c2bb4be6a8bc65),
+    "74533": (710, 4864, 0xaa3b78e6a155cc16),
+    "74534": (936, 6448, 0xbf64b513a9d96d29),
+    "7454": (256, 256, 0x90ed8fd287ffa1c9),
+    "74540": (1024, 2048, 0xe7ed270c6a4d53a5),
+    "7455": (256, 256, 0x3d7c436e584cd681),
+    "74563": (704, 4784, 0x97277c638f78e444),
+    "74564": (924, 6240, 0x36a3574d6473a15a),
+    "74589": (1095, 929, 0x6a7e3d50cb9bcaa7),
+    "74597": (1050, 1030, 0x265f7952a5466a9a),
+    "74623": (512, 4096, 0xb8b8d24c96a44365),
+    "7464": (2048, 2048, 0xe8e51c5e50b805f9),
+    "74640": (512, 4096, 0x3b2ca825af5e5b65),
+    "74641": (512, 4096, 0x02d9269a9b53cac5),
+    "74642": (512, 4096, 0xa189799f1f4ed4e5),
+    "74643": (512, 4096, 0xf8ba2e27733a0ca5),
+    "74644": (512, 4096, 0x9cede49fd75d98e5),
+    "74645": (512, 4096, 0xdeeee17707065625),
+    "7465": (2048, 2048, 0x25b0ef636ed5112b),
+    "74688": (2086, 2086, 0x2a5e68423269c1fb),
+    "7472": (1010, 2020, 0xe9efb597c88fb0f4),
+    "7473": (1021, 4076, 0x3a2ef75e444fcc9b),
+    "7475": (702, 5600, 0xf91500da1089602d),
+    "7476": (1188, 4736, 0xab892f153a41175b),
+    "7487": (64, 256, 0x01acd6ca398e1ed5),
+    "74906": (64, 384, 0xd28be0590b56f575),
+    "7492": (677, 2544, 0x205586779433c053),
+    "7495": (928, 3678, 0xa9d9ca70c7efe556),
+    "74LS54": (1024, 1024, 0x987e3d89be380e61),
+]
+
+/// Every <ic> group of the logic database with its pin count and vectors.
+func allLogicGroups(_ xml: String) -> [(names: [String], pins: Int, vectors: [[Character]])] {
+    var out: [(names: [String], pins: Int, vectors: [[Character]])] = []
+    var from = xml.startIndex
+    while let r = xml.range(of: "<ic ", range: from..<xml.endIndex) {
+        guard let tagEnd = xml.range(of: ">", range: r.upperBound..<xml.endIndex),
+              let close = xml.range(of: "</ic>", range: tagEnd.upperBound..<xml.endIndex) else { break }
+        let tag = String(xml[r.lowerBound..<tagEnd.upperBound])
+        func attr(_ n: String) -> String? {
+            guard let a = tag.range(of: n + "=\""), let e = tag.range(of: "\"", range: a.upperBound..<tag.endIndex) else { return nil }
+            return String(tag[a.upperBound..<e.lowerBound])
+        }
+        let body = xml[tagEnd.upperBound..<close.lowerBound]
+        var vectors: [[Character]] = []
+        var vf = body.startIndex
+        while let v = body.range(of: "<vector", range: vf..<body.endIndex),
+              let gt = body.range(of: ">", range: v.upperBound..<body.endIndex),
+              let ve = body.range(of: "</vector>", range: gt.upperBound..<body.endIndex) {
+            vectors.append(Array(body[gt.upperBound..<ve.lowerBound].filter { !$0.isWhitespace }))
+            vf = ve.upperBound
+        }
+        let names = (attr("name") ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        out.append((names, Int(attr("pins") ?? "") ?? vectors.first?.count ?? 0, vectors))
+        from = close.upperBound
+    }
+    return out
+}
+
+/// Pins applied one at a time (pin 1 first, or the last first), then C pins pulsed – the way a step races.
+func simulateOrdered(_ model: LogicModels.Model, names: [String], vectors: [[Character]], ascending: Bool) -> [[Int: Bool]] {
+    let s = LogicSim(names: names)
+    var level = [Bool](repeating: false, count: names.count)
+    var cur = [Bool?](repeating: nil, count: names.count)
+    var results: [[Int: Bool]] = []
+    func step(_ next: [Bool?]) { s.prev = s.cur; s.cur = next; s.out = []; model.step(s) }
+    for vec in vectors {
+        var clocks: [Int] = []
+        let order = ascending ? Array(vec.indices) : vec.indices.reversed()
+        for i in order where i < names.count {
+            let c = vec[i]
+            let nv: Bool? = c == "0" ? false : c == "1" ? true : c == "C" ? level[i] : nil
+            if c == "C" { clocks.append(i) }
+            if cur[i] != nv { cur[i] = nv; step(cur) }
+        }
+        step(cur)
+        if !clocks.isEmpty {
+            for i in clocks { cur[i] = true }; step(cur)
+            for i in clocks { cur[i] = false }; step(cur)
+        }
+        for (i, c) in vec.enumerated() where i < names.count { if c == "0" || c == "1" { level[i] = c == "1" } else if c == "C" { level[i] = false } }
+        var r: [Int: Bool] = [:]
+        for (n, value) in s.out { if let i = s.idx(n), let b = value { r[i] = b } }
+        results.append(r)
+    }
+    return results
+}
+
+/// The ZIF socket set in 8-pin groups, one group after another (a DIP chip sits bottom-aligned).
+func simulateGrouped(_ model: LogicModels.Model, names: [String], vectors: [[Character]]) -> [[Int: Bool]] {
+    let n = names.count
+    func zif(_ p: Int) -> Int { p < n / 2 ? p + 1 : p + 1 + (40 - n) }
+    let groups = Dictionary(grouping: 0..<n, by: { (zif($0) - 1) / 8 }).sorted { $0.key < $1.key }.map { $0.value }
+    let s = LogicSim(names: names)
+    var level = [Bool](repeating: false, count: n)
+    var cur = [Bool?](repeating: nil, count: n)
+    var results: [[Int: Bool]] = []
+    func step(_ next: [Bool?]) { s.prev = s.cur; s.cur = next; s.out = []; model.step(s) }
+    for vec in vectors {
+        var clocks: [Int] = []
+        for g in groups {
+            var changed = false
+            for i in g {
+                let c = vec[i]
+                let nv: Bool? = c == "0" ? false : c == "1" ? true : c == "C" ? level[i] : nil
+                if c == "C" { clocks.append(i) }
+                if cur[i] != nv { cur[i] = nv; changed = true }
+            }
+            if changed { step(cur) }
+        }
+        step(cur)
+        if !clocks.isEmpty {
+            for i in clocks { cur[i] = true }; step(cur)
+            for i in clocks { cur[i] = false }; step(cur)
+        }
+        for (i, c) in vec.enumerated() where i < n { if c == "0" || c == "1" { level[i] = c == "1" } else if c == "C" { level[i] = false } }
+        var r: [Int: Bool] = [:]
+        for (nm, value) in s.out { if let i = s.idx(nm), let b = value { r[i] = b } }
+        results.append(r)
+    }
+    return results
+}
+
+/// Outputs of the generated test that would differ if the pins of a step were set one at a time.
+func raceMismatches(_ chip: String, names: [String], _ e: LogicModels.Extended) -> Int {
+    let inputs = e.vectors.map { v in v.map { $0 == "H" || $0 == "L" || $0 == "Z" ? Character("X") : $0 } }
+    var bad = 0
+    for asc in [true, false] {
+        guard let m = LogicModels.model(for: chip, names: names) else { return 1 }
+        let ord = simulateOrdered(m, names: names, vectors: inputs, ascending: asc)
+        for (vi, v) in e.vectors.enumerated() {
+            for (i, c) in v.enumerated() where c == "H" || c == "L" || c == "Z" {
+                if ord[vi][i] != (c != "L") { bad += 1 }
+            }
+        }
+    }
+    return bad
 }
 
 print(failed ? "DBTEST FAILED" : "DBTEST OK")
