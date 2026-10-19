@@ -185,6 +185,8 @@ final class ChipTestWindowController: NSWindowController {
     private var stepIndex = 0
     private var failures = 0
     private var unstable = false
+    /// Set once the write test has erased the chip, until the original contents are written back.
+    private var pendingRestore: URL?
 
     @objc private func start(_ sender: Any?) {
         guard !running else { stopRequested = true; startButton.title = "Stopping…"; return }
@@ -192,6 +194,7 @@ final class ChipTestWindowController: NSWindowController {
         guard !steps.isEmpty else { NSSound.beep(); return }
         report.string = ""
         failures = 0
+        pendingRestore = nil
         stopRequested = false
         stepIndex = 0
         running = true
@@ -225,6 +228,30 @@ final class ChipTestWindowController: NSWindowController {
         } else {
             say(failures == 0 ? "RESULT: PASSED – no faults found." : "RESULT: \(failures) problem(s) found – see above.")
         }
+        if let backup = pendingRestore { reportUnrestored(backup) }
+        pendingRestore = nil
+    }
+
+    /// The write test erased the chip but its original contents weren't written back: keep them safe and say where.
+    private func reportUnrestored(_ backup: URL) {
+        guard let data = try? Data(contentsOf: backup) else {
+            say("⚠ The original contents were NOT written back, and the backup could not be found.")
+            return
+        }
+        if data.allSatisfy({ $0 == 0xFF }) {
+            say("The chip was blank before the test, so nothing was lost – it is now erased or partly written.")
+            return
+        }
+        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("ChipBurner", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd-HHmmss"
+        let safe = setup.chip.replacingOccurrences(of: "@", with: "_").replacingOccurrences(of: "/", with: "_")
+        let keep = dir.appendingPathComponent("\(safe)-backup-\(f.string(from: Date())).bin")
+        if (try? data.write(to: keep)) != nil {
+            say("⚠ The original contents were NOT written back. They are saved in \(keep.path) – open that file and Program the chip to restore them.")
+        } else {
+            say("⚠ The original contents were NOT written back. The backup is in \(backup.path) until the next test – open it and Program the chip to restore them.")
+        }
     }
 
     private func minipro(_ ok: Bool, _ out: String, _ what: String) -> Bool {
@@ -232,6 +259,10 @@ final class ChipTestWindowController: NSWindowController {
             failures += 1
             say("✗ \(what) failed – minipro said:")
             out.components(separatedBy: .newlines).filter { !$0.isEmpty && !$0.contains("overridden database") }.suffix(6).forEach { say("    " + $0) }
+            if out.contains("LIBUSB_ERROR") || out.contains("IO error") {
+                say("  The programmer stopped answering over USB in the middle of the operation. Unplug it and plug it in again,")
+                say("  preferably straight into the Mac rather than through a hub, then check the chip's seating and try again.")
+            }
         }
         return ok
     }
@@ -325,7 +356,9 @@ final class ChipTestWindowController: NSWindowController {
                 let data = p.data(count: size)
                 try? data.write(to: file)
                 steps.append(Step(title: "Write test: \(p.rawValue)", args: setup.writeArgs + ["-w", file.path, "-v"]) { [unowned self] ok, out in
-                    self.minipro(ok, out, "Writing \(p.rawValue)")
+                    // from here on the chip has been erased: its contents are only in the backup
+                    if self.pendingRestore == nil { self.pendingRestore = backup }
+                    return self.minipro(ok, out, "Writing \(p.rawValue)")
                 })
                 steps.append(Step(title: "Read back \(p.rawValue)", args: setup.readArgs + ["-r", back.path]) { [unowned self] ok, out in
                     guard self.minipro(ok, out, "Reading back \(p.rawValue)"), let got = try? Data(contentsOf: back) else { return false }
@@ -334,7 +367,10 @@ final class ChipTestWindowController: NSWindowController {
                 })
             }
             steps.append(Step(title: "Write the original contents back", args: setup.writeArgs + ["-w", backup.path]) { [unowned self] ok, out in
-                if self.minipro(ok, out, "Writing the original contents back") { self.say("✓ Original contents written back and verified.") }
+                if self.minipro(ok, out, "Writing the original contents back") {
+                    self.say("✓ Original contents written back and verified.")
+                    self.pendingRestore = nil
+                }
                 return true
             })
         }

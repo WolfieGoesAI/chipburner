@@ -826,7 +826,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
                 if !ok { NSSound.beep() }
             }
             let all = collected.joined(separator: "\n")
-            if !ok && !reportsOwnResult { self.explainIDFailure(all) }
+            if !ok && !reportsOwnResult {
+                if all.contains("LIBUSB_ERROR") || all.contains("IO error") {
+                    self.showError("The programmer stopped responding",
+                                   "The USB connection to the programmer timed out in the middle of “\(title)”.\n\nUnplug the programmer and plug it in again – preferably straight into the Mac, not through a hub – then check the chip's seating and try again. If it was writing or erasing, the chip may now be partly written.")
+                } else {
+                    self.explainIDFailure(all)
+                }
+            }
             // Every job prints the programmer's firmware and serial number; keep the top line current.
             if let model = self.programmerModel, all.contains("Serial code:") {
                 self.showProgrammer(model: model, output: all)
