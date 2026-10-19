@@ -5,8 +5,8 @@
  * so the voltage the programmer really delivers can be measured with a meter between the two pins.
  * <vpp code> is the TL866A VPP code, the high nibble of the voltage byte (0x40 10 V, 0x00 12.5 V, 0x30 13.5 V,
  * 0x50 14 V, 0x10 16 V, 0x70 17 V, 0x60 18 V, 0x20 21 V; low nibble 0 = VCC 5 V). The level is set by starting a
- * transaction as for a 27C256 (protocol 0x31, variant 0x11), then every pin driver is cleared and only the VPP and
- * GND drivers are switched on. VPP goes off again on SIGINT/SIGTERM/SIGHUP (ChipBurner's Stop), on overcurrent,
+ * transaction as for a 27C256 (protocol 0x31, variant 0x11), then every pin driver latch is rewritten so that only the
+ * VPP and GND drivers are on. VPP goes off again on SIGINT/SIGTERM/SIGHUP (ChipBurner's Stop), on overcurrent,
  * or after <seconds>. */
 #include <signal.h>
 
@@ -93,21 +93,23 @@ static int chipburner_vpp_check(minipro_handle_t *handle, const char *spec)
 	if (msg_send(handle->usb_handle, msg, 48))
 		return EXIT_FAILURE;
 
-	/* Whatever the transaction switched on: off again, then only VPP and GND */
-	memset(msg, 0, sizeof(msg));
-	msg[0] = TL866A_RESET_PIN_DRIVERS;
-	if (msg_send(handle->usb_handle, msg, 10)) {
-		chipburner_vpp_off(handle);
-		return EXIT_FAILURE;
-	}
+	/* Whatever the transaction switched on: off again, then only VPP and GND. Not with RESET_PIN_DRIVERS –
+	 * that also puts VPP back to its idle level (about 9.6 V whatever was chosen, measured on a TL866A).
+	 * Instead all eight driver latches are written directly: VPP (0-1) and GND (5-7) off = 0,
+	 * VCC (2-4, PNP drivers) off = 0xff; then the chosen VPP and GND bits. */
 	memset(msg, 0, sizeof(msg));
 	msg[0] = TL866A_SET_LATCH;
-	msg[7] = 2;
+	msg[7] = 8;
 	msg[8] = TL866A_OE_ALL;
-	msg[9] = vp->latch;
-	msg[10] = vp->mask;
-	msg[11] = gp->latch;
-	msg[12] = gp->mask;
+	for (i = 0; i < 8; i++) {
+		uint8_t v = (i >= 2 && i <= 4) ? 0xff : 0x00;
+		if (i == vp->latch)
+			v |= vp->mask;
+		if (i == gp->latch)
+			v |= gp->mask;
+		msg[9 + 2 * i] = (uint8_t)i;
+		msg[10 + 2 * i] = v;
+	}
 	if (msg_send(handle->usb_handle, msg, 32)) {
 		chipburner_vpp_off(handle);
 		return EXIT_FAILURE;
