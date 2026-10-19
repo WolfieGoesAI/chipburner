@@ -572,7 +572,21 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         logView.scrollToEndOfDocument(nil)
     }
 
-    private func setStatus(_ s: String) { statusLabel.stringValue = s }
+    /// The status line at the bottom. `result` true = the operation finished without error (green background),
+    /// false = it failed (red background), nil = neutral (progress, Ready, hints).
+    private func setStatus(_ s: String, result: Bool? = nil) {
+        statusLabel.wantsLayer = true
+        statusLabel.layer?.cornerRadius = 4
+        if let ok = result {
+            // a space either side so the coloured background doesn't touch the text
+            statusLabel.stringValue = " \(s) "
+            let c: NSColor = ok ? .systemGreen : .systemRed
+            statusLabel.layer?.backgroundColor = c.withAlphaComponent(0.3).cgColor
+        } else {
+            statusLabel.stringValue = s
+            statusLabel.layer?.backgroundColor = nil
+        }
+    }
 
     private func updateEnabledState() {
         actionButtons.forEach { $0.isEnabled = !isBusy }
@@ -807,7 +821,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             let ok = status == 0
             self.progress.doubleValue = ok ? 100 : 0
             if !reportsOwnResult {
-                self.setStatus(ok ? "\(title): done" : "\(title): failed (exit code \(status)) – see Log")
+                self.setStatus(ok ? "\(title): done" : "\(title): failed (exit code \(status)) – see Log", result: ok)
                 self.log(ok ? "✓ \(title) finished." : "✗ \(title) failed (exit code \(status)).")
                 if !ok { NSSound.beep() }
             }
@@ -1003,7 +1017,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         runJob("Read ID", ["-p", ref, "-D", "-y"], reportsOwnResult: true) { [weak self] _, output in
             guard let self = self, let w = self.window else { return }
             guard let id = ChipIDParser.parse(output), id != 0, id != 0xFFFF, id != 0xFFFFFFFF else {
-                self.setStatus("Read ID: no chip ID – see Log")
+                self.setStatus("Read ID: no chip ID – see Log", result: false)
                 self.log("✗ Read ID: no chip ID could be read.")
                 NSSound.beep()
                 self.showError("No chip ID could be read.",
@@ -1015,7 +1029,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             if matches.isEmpty { matches = ChipDatabase.shared.chips(withID: id, programmer: programmer, packageSuffix: nil) }
             let count = Set(matches.map { $0.name.uppercased() }).count
             self.log("✓ Read ID: chip ID \(idText) – \(count) matching chip(s) in the database. (The “ID mismatch” above is expected: \(ref) is only the reference for the ID read.)")
-            self.setStatus("Chip ID \(idText): \(count) matching chip(s)")
+            self.setStatus("Chip ID \(idText): \(count) matching chip(s)", result: count > 0)
             guard !matches.isEmpty else {
                 self.showInfo("Chip ID \(idText) read", "No chip in the \(programmer) database has this ID. The maker code is 0x\(String(format: "%02X", (id >> 8) & 0xFF)).")
                 return
@@ -1025,7 +1039,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             let picker = ChipSearchController(title: "Chips with ID \(idText)", results: names) { [weak self] name in
                 guard let self = self, let name = name else { return }
                 self.selectChip(name)
-                self.setStatus("Chip ID \(idText): \(name) selected")
+                self.setStatus("Chip ID \(idText): \(name) selected", result: true)
             }
             picker.present(on: w)
         }
@@ -1418,7 +1432,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
                 guard let self = self, let w = self.window else { return }
                 self.isBusy = false
                 self.progress.doubleValue = abortReason == nil ? 100 : 0
-                self.setStatus("Identify logic: \(passed.count) match(es) after \(tested) of \(groups.count) types")
+                self.setStatus("Identify logic: \(passed.count) match(es) after \(tested) of \(groups.count) types", result: !passed.isEmpty && abortReason == nil)
                 self.log("✓ Identify logic finished: \(passed.count) match(es).")
                 if let reason = abortReason, passed.isEmpty {
                     self.showError("Identify stopped", reason)
@@ -2313,13 +2327,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             return
         }
         guard let hit = BufferOps.find(p, in: buffer, from: start) else {
-            setStatus("Not found: \(lastFindPattern)")
+            setStatus("Not found: \(lastFindPattern)", result: false)
             NSSound.beep()
             return
         }
         hexEditor.show(hit..<(hit + p.count))
         hexEditor.cursor = hit + 1
-        setStatus("Found \(lastFindPattern) at \(hexAddr(hit))" + (hit < start ? " (wrapped around)" : ""))
+        setStatus("Found \(lastFindPattern) at \(hexAddr(hit))" + (hit < start ? " (wrapped around)" : ""), result: true)
     }
 
     private func parseRange(_ startText: String, _ endText: String) -> Range<Int>? {
