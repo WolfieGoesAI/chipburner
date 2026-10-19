@@ -754,7 +754,7 @@ class AppState(app: Application) : AndroidViewModel(app) {
                 if (row.containsMatchIn(t) && t.contains('-')) { bad += t.take(4).toIntOrNull() ?: -1; errors += t.count { it == '-' } }
                 if (t.lowercase().contains("logic test successful")) success = true
             }
-            if (bad.isEmpty() && success && ok) {
+            if (bad.isEmpty() && ok && (success || out.lines().count { row.containsMatchIn(it.trim()) } > 0)) {
                 report += "✓ Exhaustive / sequence test: all ${e.vectors.size} steps (${e.checks} output checks) passed."
             } else if (bad.isNotEmpty()) {
                 failed = true

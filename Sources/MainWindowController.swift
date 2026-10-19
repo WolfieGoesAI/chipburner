@@ -1381,7 +1381,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             }
             self.runJob("Extended logic test \(name) (\(e.vectors.count) steps)", ["-p", test.safeName, "-T"], logicic: url) { ok, output in
                 let r = LogicTest.parseResult(output)
-                if r.passed && ok && r.failingVectors.isEmpty {
+                if ok && r.failingVectors.isEmpty && (r.passed || r.table.count > 1) {
                     report.append("✓ Exhaustive / sequence test: all \(e.vectors.count) steps (\(e.checks) output checks) passed.")
                 } else if !r.failingVectors.isEmpty {
                     failed = true

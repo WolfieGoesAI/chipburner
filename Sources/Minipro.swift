@@ -129,26 +129,31 @@ final class Minipro {
     static func stream(_ p: Process, deliverOnMain: Bool = true,
                        onLine: @escaping (String, Bool) -> Void,
                        completion: @escaping (Int32) -> Void) -> Bool {
-        let pipe = Pipe()
-        p.standardOutput = pipe
-        p.standardError = pipe
-        let splitter = LineSplitter(deliverOnMain: deliverOnMain, onLine: onLine)
-        // One reader only: the output is read on one queue until end-of-file, and completion is
-        // reported once both the reading has finished and the process has exited. (Draining the pipe
-        // from the termination handler as well raced with the reader – minipro writes long tables in
-        // one burst at exit, and chunks were lost or spliced in the wrong order.)
+        // stdout and stderr on separate pipes: minipro writes its tables to stdout (block-buffered, so it
+        // arrives in bursts) and messages to stderr (unbuffered). Through one shared pipe a message could land
+        // in the middle of a table row – "Logic test successful." was cut into a vector line and lost.
+        let outPipe = Pipe(), errPipe = Pipe()
+        p.standardOutput = outPipe
+        p.standardError = errPipe
+        let outSplitter = LineSplitter(deliverOnMain: deliverOnMain, onLine: onLine)
+        let errSplitter = LineSplitter(deliverOnMain: deliverOnMain, onLine: onLine)
+        // One reader per pipe, each until end-of-file; completion is reported once both readers have
+        // finished and the process has exited.
         let finished = DispatchGroup()
-        finished.enter()   // reading
+        finished.enter()   // stdout
+        finished.enter()   // stderr
         finished.enter()   // process exit
-        let reader = pipe.fileHandleForReading
-        DispatchQueue.global(qos: .userInitiated).async {
-            while true {
-                let data = reader.availableData
-                if data.isEmpty { break }
-                splitter.feed(data)
+        for (pipe, splitter) in [(outPipe, outSplitter), (errPipe, errSplitter)] {
+            let reader = pipe.fileHandleForReading
+            DispatchQueue.global(qos: .userInitiated).async {
+                while true {
+                    let data = reader.availableData
+                    if data.isEmpty { break }
+                    splitter.feed(data)
+                }
+                splitter.flush()
+                finished.leave()
             }
-            splitter.flush()
-            finished.leave()
         }
         p.terminationHandler = { _ in finished.leave() }
         finished.notify(queue: .main) {
@@ -157,7 +162,8 @@ final class Minipro {
         do {
             try p.run()
         } catch {
-            pipe.fileHandleForWriting.closeFile()   // lets the reader see end-of-file
+            outPipe.fileHandleForWriting.closeFile()   // lets the readers see end-of-file
+            errPipe.fileHandleForWriting.closeFile()
             onLine("Could not start minipro: \(error.localizedDescription)", false)
             completion(-1)
             return false

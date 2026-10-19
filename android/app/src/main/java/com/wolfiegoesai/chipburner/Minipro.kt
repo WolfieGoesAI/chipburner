@@ -86,7 +86,6 @@ class Minipro(private val context: Context) {
 
         val pb = ProcessBuilder(listOf(executable.path) + db + args)
             .directory(workDir)
-            .redirectErrorStream(true)
         pb.environment()["LC_ALL"] = "C"
         pb.environment()["TMPDIR"] = context.cacheDir.path
         if (usbFd != null) pb.environment()["CHIPBURNER_USB_SOCKET"] = socketName
@@ -100,18 +99,26 @@ class Minipro(private val context: Context) {
         }
         current = process
         runCatching { process.outputStream.close() }
-        val splitter = LineSplitter(onLine)
-        val buf = ByteArray(8192)
-        val input = process.inputStream
-        try {
-            while (true) {
-                val n = input.read(buf)
-                if (n < 0) break
-                splitter.feed(buf, n)
+        // stdout and stderr read separately: through one stream a stderr message could land in the middle of a
+        // stdout table row ("Logic test successful." was cut into a vector line and lost).
+        val lock = Any()
+        val emit: (String, Boolean) -> Unit = { line, progress -> synchronized(lock) { onLine(line, progress) } }
+        fun pump(input: java.io.InputStream) {
+            val splitter = LineSplitter(emit)
+            val buf = ByteArray(8192)
+            try {
+                while (true) {
+                    val n = input.read(buf)
+                    if (n < 0) break
+                    splitter.feed(buf, n)
+                }
+            } catch (_: IOException) {
             }
-        } catch (_: IOException) {
+            splitter.finish()
         }
-        splitter.finish()
+        val errThread = thread(isDaemon = true, name = "minipro-stderr") { pump(process.errorStream) }
+        pump(process.inputStream)
+        errThread.join()
         val code = process.waitFor()
         current = null
         server?.let { closeServer(it, socketName) }
