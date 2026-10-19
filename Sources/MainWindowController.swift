@@ -249,10 +249,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         let empty = { () -> NSView in NSView() }
         // Connection and Memory share the first row. The Voltages and Options rows show their current
         // setting right after the label, with their buttons at the end under Fuses & Locks….
+        let connLabel = label("Connection:"), voltLabel = label("Voltages:"), optLabel = label("Options:"), memLabel = label("Memory:")
         let grid = NSGridView(views: [
-            [label("Connection:"), connectionPopup, label("Memory:"), memoryPopup, configButton],
-            [label("Voltages:"), voltageLabel, empty(), empty(), voltButton],
-            [label("Options:"), settingsLabel, empty(), empty(), settingsButton],
+            [connLabel, connectionPopup, memLabel, memoryPopup, configButton],
+            [voltLabel, voltageLabel, empty(), empty(), voltButton],
+            [optLabel, settingsLabel, empty(), empty(), settingsButton],
         ])
         grid.rowSpacing = 6
         grid.columnSpacing = 8
@@ -260,13 +261,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         grid.column(at: 0).xPlacement = .trailing
         grid.column(at: 1).xPlacement = .leading
         grid.column(at: 2).xPlacement = .trailing
-        // Any spare width goes to the Memory pop-up (it reaches to the buttons), not to the label column –
-        // otherwise Auto Layout picks either at launch and the Connection/Voltages/Options column shifts.
-        grid.column(at: 3).xPlacement = .fill
-        memoryPopup.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        connectionPopup.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+        grid.column(at: 3).xPlacement = .leading
         grid.column(at: 2).leadingPadding = 12
         grid.column(at: 4).xPlacement = .fill      // the three buttons get the same width
+        // Fixed widths for every column but the Memory pop-up's: the spare width then always ends up after
+        // that pop-up. Left to Auto Layout, the spare width sometimes went to the label column at launch,
+        // pushing Connection / Voltages / Options to the right until an option was changed.
+        grid.column(at: 0).width = ceil([connLabel, voltLabel, optLabel].map { $0.fittingSize.width }.max() ?? 70)
+        grid.column(at: 1).width = 240
+        grid.column(at: 2).width = ceil(memLabel.fittingSize.width)
+        grid.column(at: 4).width = ceil([configButton, voltButton, settingsButton].map { $0.fittingSize.width }.max() ?? 100)
+        connectionPopup.widthAnchor.constraint(equalToConstant: 240).isActive = true
+        memoryPopup.widthAnchor.constraint(equalToConstant: 240).isActive = true
         for r in 1...2 {
             grid.row(at: r).mergeCells(in: NSRange(location: 1, length: 3))
             grid.cell(atColumnIndex: 1, rowIndex: r).xPlacement = .leading
