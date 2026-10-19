@@ -78,7 +78,7 @@ for n in ["X28C256", "AT28C256", "W27C512@DIP28", "AM27C256@DIP28", "GAL16V8", "
     }
 }
 expect(db.info(for: "GAL16V8", programmer: "TL866A")?.canErase == true, "GAL16V8 has an erase command")
-expect(db.info(for: "23128@DIP28", programmer: "TL866A").map { $0.codeSize == 16384 && !$0.canErase } == true
+expect(db.info(for: "23128@DIP28", programmer: "TL866A").map { $0.codeSize == 16384 && $0.canErase != true } == true
        && db.info(for: "23128@DIP28", programmer: "TL866II") != nil, "23128 mask ROM in the TL866A and TL866II databases (patch-minipro.sh)")
 expect(db.info(for: "AM27C256@DIP28", programmer: "TL866A")?.canErase == false, "AM27C256 (UV EPROM) has no erase command")
 
