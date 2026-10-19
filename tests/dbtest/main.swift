@@ -344,181 +344,6 @@ do {
 
 // Logic chip models (Extended Logic Test): each must agree with minipro's own vectors, and the generated
 // sequences must match the reference generator the models were developed with.
-let expectedExtended: [String: (Int, Int, UInt64)] = [
-    "4001": (256, 1024, 0xcecb16b5fbac0ae5),
-    "4011": (256, 1024, 0x88d1e3ba18dc9485),
-    "4013": (1120, 4466, 0xa3cd1236a70976c5),
-    "4017": (642, 7062, 0x8f3a3204554390fc),
-    "4040": (4666, 55992, 0x9fa54c7e3927d9fa),
-    "4049": (64, 384, 0x65872d8dfd8ab865),
-    "4050": (64, 384, 0x0b57060e268ada15),
-    "4070": (256, 1024, 0xe847e4d74babe545),
-    "4071": (256, 1024, 0x2c469fca26ef29c5),
-    "4081": (256, 1024, 0x40c841e6ffe776e5),
-    "4093": (256, 1024, 0x88d1e3ba18dc9485),
-    "7400": (256, 1024, 0xa28297e3d9a12a75),
-    "7402": (256, 1024, 0x74fc1ce417dd9345),
-    "7404": (64, 384, 0x492233cfe3d77265),
-    "7408": (256, 1024, 0x47d3a23f08195d15),
-    "7410": (512, 1536, 0x9604c1979eeab4b5),
-    "7411": (512, 1536, 0xa6fa855e411dd555),
-    "74125": (256, 512, 0x9a8414036166ee15),
-    "74126": (256, 512, 0x35679807b95e1db5),
-    "74138": (64, 512, 0x4874eb594c71b26d),
-    "74139": (64, 512, 0xa11f23095fe0e625),
-    "74151": (4096, 8192, 0x82fd772942dc5905),
-    "74153": (4096, 8192, 0xe0962355b0093725),
-    "74157": (1024, 4096, 0xdf9d44be2be3f365),
-    "74160": (1200, 5372, 0xa51944ad10d1ce5e),
-    "74161": (1198, 5990, 0x5a47b704d18b42ba),
-    "74162": (1151, 4712, 0xd15f8e44533f3615),
-    "74163": (1217, 5785, 0xa09c72de4bbc54e4),
-    "74164": (843, 6744, 0x29d53de556efdf70),
-    "74165": (1097, 2194, 0x38e01b928374e937),
-    "74174": (927, 5562, 0xfad86e4caef7750e),
-    "74175": (905, 7240, 0xe18baa20be0f7219),
-    "74193": (1352, 8112, 0x41275907171345ce),
-    "7420": (256, 512, 0x7589a47ebeeea86d),
-    "7421": (256, 512, 0xa1d69b927d41a28d),
-    "74240": (1024, 4096, 0x7f4593647e0f94a5),
-    "74244": (1024, 4096, 0x220fa476fa80cfe5),
-    "74245": (512, 4096, 0xdeeee17707065625),
-    "7427": (512, 1536, 0xb1871c1f926cc6d5),
-    "74273": (934, 7472, 0x8300b1e6c472abb6),
-    "7430": (256, 256, 0x73179affd0ed9531),
-    "7432": (256, 1024, 0xe09f26e63534dd75),
-    "74373": (860, 5976, 0x2221ce3c8bcfd046),
-    "74374": (960, 6504, 0x493b6c3339de6608),
-    "74393": (683, 5456, 0xfa1de3b6a4470eb9),
-    "74541": (1024, 2048, 0x8c12902423ba33e5),
-    "74573": (877, 6104, 0x72d8440dbf7c7918),
-    "74574": (928, 6576, 0x62623743178c0173),
-    "74595": (856, 6848, 0x39b99a98b5d64cfb),
-    "7474": (1078, 4302, 0x207b391c2db1f500),
-    "7483": (512, 2560, 0xf7f7d0b76d8b3c3d),
-    "7485": (2048, 6144, 0x571f826f7d1114b5),
-    "7486": (256, 1024, 0xb4f6a2048e139845),
-    "7490": (811, 3092, 0x3ba182e443621c9a),
-    "7493": (654, 2484, 0x3d9d0df639f6a5c5),
-]
-if let xml = try? String(contentsOfFile: args[2]) {
-    var problems: [String] = [], modelled = 0
-    for (chip, entry) in Pinouts.logicNames.sorted(by: { $0.key < $1.key }) {
-        let items = entry.pins.split(separator: " ")
-        let names = items.map { String($0.split(separator: ":", maxSplits: 1).last ?? "") }
-        let roles = items.map { $0.first ?? "i" }
-        guard let model = LogicModels.model(for: chip, names: names) else { continue }
-        modelled += 1
-        guard let v = Pinouts.logicVectors(xml: xml, name: chip) else { problems.append("\(chip): no vectors"); continue }
-        let res = LogicModels.simulate(model, names: names, vectors: v.vectors)
-        var checks = 0, bad: [String] = []
-        for (vi, (vec, r)) in zip(v.vectors, res).enumerated() {
-            for (i, c) in vec.enumerated() where c == "L" || c == "H" {
-                guard let m = r[i] else { continue }
-                checks += 1
-                if m != (c == "H") { bad.append("v\(vi) pin \(i + 1) \(names[i]) db \(c)") }
-            }
-        }
-        if checks == 0 { problems.append("\(chip): no outputs checked") }
-        if !bad.isEmpty { problems.append("\(chip): " + bad.prefix(4).joined(separator: ", ")) }
-        guard let e = LogicModels.extended(chip: chip, names: names, roles: roles) else { problems.append("\(chip): no extended test"); continue }
-        let fp = LogicModels.fingerprint(e.vectors)
-        if let x = expectedExtended[chip] {
-            if x.0 != e.vectors.count || x.1 != e.checks || x.2 != fp {
-                problems.append("\(chip): extended \(e.vectors.count)/\(e.checks)/\(String(fp, radix: 16)) vs reference \(x.0)/\(x.1)/\(String(x.2, radix: 16))")
-            }
-        } else { problems.append("\(chip): no reference") }
-        let t = LogicTest(name: chip, pins: names.count, voltage: "5V", vectors: e.vectors)
-        if !t.problems().isEmpty { problems.append("\(chip): " + t.problems()[0]) }
-        if e.phases.map({ $0.range.count }).reduce(0, +) != e.vectors.count { problems.append("\(chip): phases don't cover the vectors") }
-    }
-    expect(problems.isEmpty && modelled == expectedExtended.count, "logic models agree with minipro's vectors (\(modelled) models)" + (problems.isEmpty ? "" : ": " + problems.prefix(10).joined(separator: "; ")))
-
-    // Models from logic-models.txt: they must agree with minipro's vectors, give the reference test vectors
-    // (the Android build generates the same ones) and be free of pin-order races.
-    if args.count > 3, let modelText = try? String(contentsOfFile: args[3]) {
-        let errors = LogicDsl.load(modelText)
-        expect(errors.isEmpty, "logic-models.txt parses" + (errors.isEmpty ? "" : ": " + errors.prefix(5).joined(separator: "; ")))
-        var dslProblems: [String] = [], dslCount = 0
-        var seenDefs = Set<String>()
-        for (_, d) in LogicDsl.defs.sorted(by: { $0.key < $1.key }) where seenDefs.insert(d.key).inserted {
-            dslCount += 1
-            guard let model = LogicModels.model(for: d.key, names: d.pins) else { dslProblems.append("\(d.key): no model"); continue }
-            var groupsSeen = 0, checks = 0
-            for g in allLogicGroups(xml) where g.names.contains(where: { d.names.contains($0) || d.names.contains(Pinouts.logicBase($0)) }) && g.pins == d.pins.count {
-                groupsSeen += 1
-                // minipro's vectors may depend on the order the pins are set in: the best of the plausible orders must agree
-                var best = Int.max
-                for res in [LogicModels.simulate(model, names: d.pins, vectors: g.vectors),
-                            simulateOrdered(LogicModels.model(for: d.key, names: d.pins)!, names: d.pins, vectors: g.vectors, ascending: true),
-                            simulateGrouped(LogicModels.model(for: d.key, names: d.pins)!, names: d.pins, vectors: g.vectors)] {
-                    var bad = 0, n = 0
-                    for (vec, r) in zip(g.vectors, res) {
-                        for (i, c) in vec.enumerated() where c == "L" || c == "H" || c == "Z" {
-                            guard let m = r[i] else { continue }
-                            n += 1
-                            if m != (c != "L") { bad += 1 }
-                        }
-                    }
-                    if bad < best { best = bad; checks = n }
-                }
-                if best > 0 { dslProblems.append("\(d.key): \(best) mismatches with \(g.names.joined(separator: ","))") }
-            }
-            if groupsSeen == 0 { dslProblems.append("\(d.key): not in the logic database"); continue }
-            if checks == 0 { dslProblems.append("\(d.key): no outputs checked") }
-            guard let e = LogicModels.extended(chip: d.key, names: d.pins, roles: d.roles) else { dslProblems.append("\(d.key): no extended test"); continue }
-            let fp = LogicModels.fingerprint(e.vectors)
-            if let x = expectedDsl[d.key] {
-                if x.0 != e.vectors.count || x.1 != e.checks || x.2 != fp {
-                    dslProblems.append("\(d.key): extended \(e.vectors.count)/\(e.checks)/\(String(fp, radix: 16)) vs reference \(x.0)/\(x.1)/\(String(x.2, radix: 16))")
-                }
-            } else { dslProblems.append("\(d.key): no reference") }
-            if raceMismatches(d.key, names: d.pins, e) > 0 { dslProblems.append("\(d.key): pin-order race") }
-            let t = LogicTest(name: d.key, pins: d.pins.count, voltage: "5V", vectors: e.vectors)
-            if !t.problems().isEmpty { dslProblems.append("\(d.key): " + t.problems()[0]) }
-            if e.phases.map({ $0.range.count }).reduce(0, +) != e.vectors.count { dslProblems.append("\(d.key): phases don't cover the vectors") }
-        }
-        expect(dslProblems.isEmpty && dslCount == expectedDsl.count, "logic-models.txt models agree with minipro's vectors (\(dslCount) models)" + (dslProblems.isEmpty ? "" : ": " + dslProblems.prefix(10).joined(separator: "; ")))
-        var raced: [String] = []
-        for (chip, entry) in Pinouts.logicNames.sorted(by: { $0.key < $1.key }) {
-            let items = entry.pins.split(separator: " ")
-            let names = items.map { String($0.split(separator: ":", maxSplits: 1).last ?? "") }
-            let roles = items.map { $0.first ?? "i" }
-            guard LogicModels.model(for: chip, names: names) != nil, let e = LogicModels.extended(chip: chip, names: names, roles: roles) else { continue }
-            if raceMismatches(chip, names: names, e) > 0 { raced.append(chip) }
-        }
-        expect(raced.isEmpty, "built-in models' extended tests are free of pin-order races" + (raced.isEmpty ? "" : ": " + raced.joined(separator: ", ")))
-    } else {
-        expect(false, "logic-models.txt not given to the dbtest")
-    }
-    let g = LogicModels.pins(for: "74132", xml: xml)
-    expect(g?.key == "7400", "74132 is tested with the 7400 model")
-    expect(LogicModels.pins(for: "74LS161", xml: xml)?.key == "74161" || LogicModels.pins(for: "74161", xml: xml)?.key == "74161", "74161 model found")
-    var all: [String] = [], have = 0
-    var from = xml.startIndex
-    while let r = xml.range(of: "<ic name=\"", range: from..<xml.endIndex), let e = xml.range(of: "\"", range: r.upperBound..<xml.endIndex) {
-        all += xml[r.upperBound..<e.lowerBound].split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-        from = e.upperBound
-    }
-    for n in all where LogicModels.pins(for: n, xml: xml) != nil { have += 1 }
-    print("LOGICMODELS: \(have) of \(all.count) logic chip names have an exhaustive or sequence test")
-}
-
-// Health check: reads are compared one at a time with the first
-do {
-    let base = Data((0..<8).map { UInt8($0) })
-    let acc = ChipTests.StabilityAccumulator(base: base)
-    var b = base; b[3] = 0x13
-    var c = base; c[3] = 0x13; c[5] = 0x45
-    acc.add(base); acc.add(b); acc.add(base); acc.add(c)
-    let r = acc.result()
-    let c3 = r.counts.first { $0.address == 3 }?.counts.map { "\($0.value)x\($0.count)" } ?? []
-    let c5 = r.counts.first { $0.address == 5 }?.counts.map { "\($0.value)x\($0.count)" } ?? []
-    expect(acc.reads == 5 && r.unstableBytes == 2 && r.unstableBits == 0x50 && c3 == ["3x3", "19x2"] && c5 == ["5x4", "69x1"],
-           "health check counts unstable bytes read by read (\(r.unstableBytes), \(c3), \(c5))")
-}
-
-
 // MARK: Helpers for the logic model checks
 
 let expectedDsl: [String: (Int, Int, UInt64)] = [
@@ -792,6 +617,182 @@ func raceMismatches(_ chip: String, names: [String], _ e: LogicModels.Extended) 
     }
     return bad
 }
+
+
+let expectedExtended: [String: (Int, Int, UInt64)] = [
+    "4001": (256, 1024, 0xcecb16b5fbac0ae5),
+    "4011": (256, 1024, 0x88d1e3ba18dc9485),
+    "4013": (1120, 4466, 0xa3cd1236a70976c5),
+    "4017": (642, 7062, 0x8f3a3204554390fc),
+    "4040": (4666, 55992, 0x9fa54c7e3927d9fa),
+    "4049": (64, 384, 0x65872d8dfd8ab865),
+    "4050": (64, 384, 0x0b57060e268ada15),
+    "4070": (256, 1024, 0xe847e4d74babe545),
+    "4071": (256, 1024, 0x2c469fca26ef29c5),
+    "4081": (256, 1024, 0x40c841e6ffe776e5),
+    "4093": (256, 1024, 0x88d1e3ba18dc9485),
+    "7400": (256, 1024, 0xa28297e3d9a12a75),
+    "7402": (256, 1024, 0x74fc1ce417dd9345),
+    "7404": (64, 384, 0x492233cfe3d77265),
+    "7408": (256, 1024, 0x47d3a23f08195d15),
+    "7410": (512, 1536, 0x9604c1979eeab4b5),
+    "7411": (512, 1536, 0xa6fa855e411dd555),
+    "74125": (256, 512, 0x9a8414036166ee15),
+    "74126": (256, 512, 0x35679807b95e1db5),
+    "74138": (64, 512, 0x4874eb594c71b26d),
+    "74139": (64, 512, 0xa11f23095fe0e625),
+    "74151": (4096, 8192, 0x82fd772942dc5905),
+    "74153": (4096, 8192, 0xe0962355b0093725),
+    "74157": (1024, 4096, 0xdf9d44be2be3f365),
+    "74160": (1200, 5372, 0xa51944ad10d1ce5e),
+    "74161": (1198, 5990, 0x5a47b704d18b42ba),
+    "74162": (1151, 4712, 0xd15f8e44533f3615),
+    "74163": (1217, 5785, 0xa09c72de4bbc54e4),
+    "74164": (843, 6744, 0x29d53de556efdf70),
+    "74165": (1097, 2194, 0x38e01b928374e937),
+    "74174": (927, 5562, 0xfad86e4caef7750e),
+    "74175": (905, 7240, 0xe18baa20be0f7219),
+    "74193": (1352, 8112, 0x41275907171345ce),
+    "7420": (256, 512, 0x7589a47ebeeea86d),
+    "7421": (256, 512, 0xa1d69b927d41a28d),
+    "74240": (1024, 4096, 0x7f4593647e0f94a5),
+    "74244": (1024, 4096, 0x220fa476fa80cfe5),
+    "74245": (512, 4096, 0xdeeee17707065625),
+    "7427": (512, 1536, 0xb1871c1f926cc6d5),
+    "74273": (934, 7472, 0x8300b1e6c472abb6),
+    "7430": (256, 256, 0x73179affd0ed9531),
+    "7432": (256, 1024, 0xe09f26e63534dd75),
+    "74373": (860, 5976, 0x2221ce3c8bcfd046),
+    "74374": (960, 6504, 0x493b6c3339de6608),
+    "74393": (683, 5456, 0xfa1de3b6a4470eb9),
+    "74541": (1024, 2048, 0x8c12902423ba33e5),
+    "74573": (877, 6104, 0x72d8440dbf7c7918),
+    "74574": (928, 6576, 0x62623743178c0173),
+    "74595": (856, 6848, 0x39b99a98b5d64cfb),
+    "7474": (1078, 4302, 0x207b391c2db1f500),
+    "7483": (512, 2560, 0xf7f7d0b76d8b3c3d),
+    "7485": (2048, 6144, 0x571f826f7d1114b5),
+    "7486": (256, 1024, 0xb4f6a2048e139845),
+    "7490": (811, 3092, 0x3ba182e443621c9a),
+    "7493": (654, 2484, 0x3d9d0df639f6a5c5),
+]
+if let xml = try? String(contentsOfFile: args[2]) {
+    var problems: [String] = [], modelled = 0
+    for (chip, entry) in Pinouts.logicNames.sorted(by: { $0.key < $1.key }) {
+        let items = entry.pins.split(separator: " ")
+        let names = items.map { String($0.split(separator: ":", maxSplits: 1).last ?? "") }
+        let roles = items.map { $0.first ?? "i" }
+        guard let model = LogicModels.model(for: chip, names: names) else { continue }
+        modelled += 1
+        guard let v = Pinouts.logicVectors(xml: xml, name: chip) else { problems.append("\(chip): no vectors"); continue }
+        let res = LogicModels.simulate(model, names: names, vectors: v.vectors)
+        var checks = 0, bad: [String] = []
+        for (vi, (vec, r)) in zip(v.vectors, res).enumerated() {
+            for (i, c) in vec.enumerated() where c == "L" || c == "H" {
+                guard let m = r[i] else { continue }
+                checks += 1
+                if m != (c == "H") { bad.append("v\(vi) pin \(i + 1) \(names[i]) db \(c)") }
+            }
+        }
+        if checks == 0 { problems.append("\(chip): no outputs checked") }
+        if !bad.isEmpty { problems.append("\(chip): " + bad.prefix(4).joined(separator: ", ")) }
+        guard let e = LogicModels.extended(chip: chip, names: names, roles: roles) else { problems.append("\(chip): no extended test"); continue }
+        let fp = LogicModels.fingerprint(e.vectors)
+        if let x = expectedExtended[chip] {
+            if x.0 != e.vectors.count || x.1 != e.checks || x.2 != fp {
+                problems.append("\(chip): extended \(e.vectors.count)/\(e.checks)/\(String(fp, radix: 16)) vs reference \(x.0)/\(x.1)/\(String(x.2, radix: 16))")
+            }
+        } else { problems.append("\(chip): no reference") }
+        let t = LogicTest(name: chip, pins: names.count, voltage: "5V", vectors: e.vectors)
+        if !t.problems().isEmpty { problems.append("\(chip): " + t.problems()[0]) }
+        if e.phases.map({ $0.range.count }).reduce(0, +) != e.vectors.count { problems.append("\(chip): phases don't cover the vectors") }
+    }
+    expect(problems.isEmpty && modelled == expectedExtended.count, "logic models agree with minipro's vectors (\(modelled) models)" + (problems.isEmpty ? "" : ": " + problems.prefix(10).joined(separator: "; ")))
+
+    // Models from logic-models.txt: they must agree with minipro's vectors, give the reference test vectors
+    // (the Android build generates the same ones) and be free of pin-order races.
+    if args.count > 3, let modelText = try? String(contentsOfFile: args[3]) {
+        let errors = LogicDsl.load(modelText)
+        expect(errors.isEmpty, "logic-models.txt parses" + (errors.isEmpty ? "" : ": " + errors.prefix(5).joined(separator: "; ")))
+        var dslProblems: [String] = [], dslCount = 0
+        var seenDefs = Set<String>()
+        for (_, d) in LogicDsl.defs.sorted(by: { $0.key < $1.key }) where seenDefs.insert(d.key).inserted {
+            dslCount += 1
+            guard let model = LogicModels.model(for: d.key, names: d.pins) else { dslProblems.append("\(d.key): no model"); continue }
+            var groupsSeen = 0, checks = 0
+            for g in allLogicGroups(xml) where g.names.contains(where: { d.names.contains($0) || d.names.contains(Pinouts.logicBase($0)) }) && g.pins == d.pins.count {
+                groupsSeen += 1
+                // minipro's vectors may depend on the order the pins are set in: the best of the plausible orders must agree
+                var best = Int.max
+                for res in [LogicModels.simulate(model, names: d.pins, vectors: g.vectors),
+                            simulateOrdered(LogicModels.model(for: d.key, names: d.pins)!, names: d.pins, vectors: g.vectors, ascending: true),
+                            simulateGrouped(LogicModels.model(for: d.key, names: d.pins)!, names: d.pins, vectors: g.vectors)] {
+                    var bad = 0, n = 0
+                    for (vec, r) in zip(g.vectors, res) {
+                        for (i, c) in vec.enumerated() where c == "L" || c == "H" || c == "Z" {
+                            guard let m = r[i] else { continue }
+                            n += 1
+                            if m != (c != "L") { bad += 1 }
+                        }
+                    }
+                    if bad < best { best = bad; checks = n }
+                }
+                if best > 0 { dslProblems.append("\(d.key): \(best) mismatches with \(g.names.joined(separator: ","))") }
+            }
+            if groupsSeen == 0 { dslProblems.append("\(d.key): not in the logic database"); continue }
+            if checks == 0 { dslProblems.append("\(d.key): no outputs checked") }
+            guard let e = LogicModels.extended(chip: d.key, names: d.pins, roles: d.roles) else { dslProblems.append("\(d.key): no extended test"); continue }
+            let fp = LogicModels.fingerprint(e.vectors)
+            if let x = expectedDsl[d.key] {
+                if x.0 != e.vectors.count || x.1 != e.checks || x.2 != fp {
+                    dslProblems.append("\(d.key): extended \(e.vectors.count)/\(e.checks)/\(String(fp, radix: 16)) vs reference \(x.0)/\(x.1)/\(String(x.2, radix: 16))")
+                }
+            } else { dslProblems.append("\(d.key): no reference") }
+            if raceMismatches(d.key, names: d.pins, e) > 0 { dslProblems.append("\(d.key): pin-order race") }
+            let t = LogicTest(name: d.key, pins: d.pins.count, voltage: "5V", vectors: e.vectors)
+            if !t.problems().isEmpty { dslProblems.append("\(d.key): " + t.problems()[0]) }
+            if e.phases.map({ $0.range.count }).reduce(0, +) != e.vectors.count { dslProblems.append("\(d.key): phases don't cover the vectors") }
+        }
+        expect(dslProblems.isEmpty && dslCount == expectedDsl.count, "logic-models.txt models agree with minipro's vectors (\(dslCount) models)" + (dslProblems.isEmpty ? "" : ": " + dslProblems.prefix(10).joined(separator: "; ")))
+        var raced: [String] = []
+        for (chip, entry) in Pinouts.logicNames.sorted(by: { $0.key < $1.key }) {
+            let items = entry.pins.split(separator: " ")
+            let names = items.map { String($0.split(separator: ":", maxSplits: 1).last ?? "") }
+            let roles = items.map { $0.first ?? "i" }
+            guard LogicModels.model(for: chip, names: names) != nil, let e = LogicModels.extended(chip: chip, names: names, roles: roles) else { continue }
+            if raceMismatches(chip, names: names, e) > 0 { raced.append(chip) }
+        }
+        expect(raced.isEmpty, "built-in models' extended tests are free of pin-order races" + (raced.isEmpty ? "" : ": " + raced.joined(separator: ", ")))
+    } else {
+        expect(false, "logic-models.txt not given to the dbtest")
+    }
+    let g = LogicModels.pins(for: "74132", xml: xml)
+    expect(g?.key == "7400", "74132 is tested with the 7400 model")
+    expect(LogicModels.pins(for: "74LS161", xml: xml)?.key == "74161" || LogicModels.pins(for: "74161", xml: xml)?.key == "74161", "74161 model found")
+    var all: [String] = [], have = 0
+    var from = xml.startIndex
+    while let r = xml.range(of: "<ic name=\"", range: from..<xml.endIndex), let e = xml.range(of: "\"", range: r.upperBound..<xml.endIndex) {
+        all += xml[r.upperBound..<e.lowerBound].split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        from = e.upperBound
+    }
+    for n in all where LogicModels.pins(for: n, xml: xml) != nil { have += 1 }
+    print("LOGICMODELS: \(have) of \(all.count) logic chip names have an exhaustive or sequence test")
+}
+
+// Health check: reads are compared one at a time with the first
+do {
+    let base = Data((0..<8).map { UInt8($0) })
+    let acc = ChipTests.StabilityAccumulator(base: base)
+    var b = base; b[3] = 0x13
+    var c = base; c[3] = 0x13; c[5] = 0x45
+    acc.add(base); acc.add(b); acc.add(base); acc.add(c)
+    let r = acc.result()
+    let c3 = r.counts.first { $0.address == 3 }?.counts.map { "\($0.value)x\($0.count)" } ?? []
+    let c5 = r.counts.first { $0.address == 5 }?.counts.map { "\($0.value)x\($0.count)" } ?? []
+    expect(acc.reads == 5 && r.unstableBytes == 2 && r.unstableBits == 0x50 && c3 == ["3x3", "19x2"] && c5 == ["5x4", "69x1"],
+           "health check counts unstable bytes read by read (\(r.unstableBytes), \(c3), \(c5))")
+}
+
 
 print(failed ? "DBTEST FAILED" : "DBTEST OK")
 exit(failed ? 1 : 0)
