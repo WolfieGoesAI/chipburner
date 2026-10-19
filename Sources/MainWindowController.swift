@@ -4,7 +4,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
 
     // MARK: State
     private var buffer = Data()
-    private var bufferName = "empty"
+    private var bufferName = "Empty"
     /// Text buffers hold JEDEC fuse maps (.jed) or fuse/config files (.conf) instead of raw bytes.
     private var bufferIsText = false
     private var bufferExt = "bin"
@@ -24,7 +24,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     private let chipField = NSTextField()
     /// The chip description; no longer shown as a line, it's the chip field's tooltip.
     private let chipInfoLabel = NSTextField(labelWithString: "")
-    private let bufferLabel = NSTextField(labelWithString: "Buffer: empty")
+    private let bufferLabel = NSTextField(labelWithString: "Empty")
     private var programmerModel: String?
     private var compareWindow: CompareWindowController?
     /// "TL866A – Serial … – Firmware …", shown in the Hardware… dialog (the main window shows the model only).
@@ -641,11 +641,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         defer { bufferLabel.toolTip = bufferLabel.stringValue }   // full text when it is cut short
         let edited = bufferEdited ? " (edited)" : ""
         if buffer.isEmpty && !bufferIsText {
-            bufferLabel.stringValue = "Buffer: empty – open a file, read a chip or use New Buffer…"
+            bufferLabel.stringValue = "Empty – open a file, read a chip or use New…"
         } else if bufferIsText {
-            bufferLabel.stringValue = "Buffer: \(bufferName)\(edited) — .\(bufferExt) text, \(buffer.count) bytes"
+            bufferLabel.stringValue = "\(bufferName)\(edited) — .\(bufferExt) text, \(buffer.count) bytes"
         } else {
-            bufferLabel.stringValue = String(format: "Buffer: %@%@ — %d (0x%X) bytes — sum 0x%04X — CRC32 0x%08X",
+            bufferLabel.stringValue = String(format: "%@%@ — %d (0x%X) bytes — Sum 0x%04X — CRC32 0x%08X",
                                              bufferName, edited, buffer.count, buffer.count, Checksums.sum16(buffer), Checksums.crc32(buffer))
         }
     }
@@ -1055,7 +1055,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             self.buffer = data
             self.bufferIsText = m.text
             self.bufferExt = m.ext
-            self.bufferName = "read from \(self.chip)"
+            self.bufferName = "Read from \(self.chip)"
             self.updateBufferViews()
         }
     }
@@ -2200,10 +2200,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     private func updateSelectionLabel() {
         guard !bufferIsText, !buffer.isEmpty else { selectionLabel.stringValue = ""; return }
         if let s = hexEditor.selection {
-            selectionLabel.stringValue = " — selected \(hexAddr(s.lowerBound))–\(hexAddr(s.upperBound - 1)) (\(s.count) bytes)"
+            selectionLabel.stringValue = " — Selected \(hexAddr(s.lowerBound))–\(hexAddr(s.upperBound - 1)) (\(s.count) bytes)"
         } else {
             let a = hexEditor.selectedAddress
-            selectionLabel.stringValue = a < buffer.count ? String(format: " — cursor %@ = %02X", hexAddr(a), buffer[a]) : ""
+            selectionLabel.stringValue = a < buffer.count ? String(format: " — Cursor %@ = %02X", hexAddr(a), buffer[a]) : ""
         }
     }
 
@@ -2286,7 +2286,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             self.buffer = BufferOps.fill(count: n, pattern: p.compactMap { $0 })
             self.bufferIsText = false
             self.bufferExt = "bin"
-            self.bufferName = "new"
+            self.bufferName = "New"
             self.updateBufferViews()
             self.log("New buffer: \(n) bytes of \(v[1]).")
         }
