@@ -46,6 +46,7 @@ import com.wolfiegoesai.chipburner.ChipInfo
 @Composable
 fun TestScreen(state: AppState, onSearch: () -> Unit) {
     var repeats by rememberSaveable { mutableIntStateOf(16) }
+    if (repeats !in listOf(16, 64, 256)) repeats = 16
     var extendedMode by rememberSaveable { mutableStateOf(false) }
     var exhaustive by rememberSaveable { mutableStateOf(true) }
     var showIdent by remember { mutableStateOf(false) }
@@ -98,7 +99,7 @@ fun TestScreen(state: AppState, onSearch: () -> Unit) {
                     if (plan != null) Text(plan.detail, fontSize = 13.sp, color = C.text2, fontFamily = Sans)
                     Text("Repeat the standard test", fontFamily = Sans, fontSize = 14.sp, color = C.text, modifier = Modifier.padding(top = 4.dp))
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        for (n in listOf(0, 16, 64, 256)) FilterChipButton(if (n == 0) "Don't repeat" else "$n times", repeats == n) { repeats = n }
+                        for (n in listOf(16, 64, 256)) FilterChipButton("$n times", repeats == n) { repeats = n }
                     }
                     Text("Repeated runs catch chips that fail now and then (marginal or overheating parts). Stop ends the test early.",
                         fontSize = 13.sp, color = C.text2, fontFamily = Sans)
