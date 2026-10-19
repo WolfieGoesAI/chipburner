@@ -33,6 +33,8 @@ fi
 git -C "$WORK/src/minipro" fetch -q --depth 1 origin 'refs/tags/0.7.4:refs/tags/0.7.4' 2>/dev/null || true
 MINIPRO_DESC="$(git -C "$WORK/src/minipro" describe --tags --always 2>/dev/null || echo unknown) ($(git -C "$WORK/src/minipro" log -1 --format=%cs))"
 echo "minipro $MINIPRO_DESC"
+PATCH_OUT="$("$ROOT/scripts/patch-minipro.sh" "$WORK/src/minipro")" || { echo "$PATCH_OUT"; exit 1; }
+echo "$PATCH_OUT"; diag "minipro patch" "$PATCH_OUT"
 diag "minipro source" "$MINIPRO_DESC"
 diag "minipro libusb calls" "$(grep -rhoE 'libusb_[a-z_]+\(' "$WORK/src/minipro/src" | sort | uniq -c | sort -rn | head -60)"
 diag "minipro Makefile (head)" "$(sed -n '1,80p' "$WORK/src/minipro/Makefile" 2>/dev/null)"
@@ -106,6 +108,8 @@ cp "$INFOIC" "$APP/assets/minipro/infoic.xml"
 cat > "$APP/assets/minipro/SOURCE.txt" <<EOF
 This app runs minipro ($MINIPRO_DESC), licensed under the GNU GPL v3.
 Source code: https://gitlab.com/DavidGriffith/minipro
+ChipBurner applies a small fix before building it (TL866A voltage byte): scripts/patch-minipro.sh
+in https://github.com/WolfieGoesAI/chipburner
 libusb $LIBUSB_VERSION (LGPL 2.1): https://github.com/libusb/libusb
 EOF
 echo "$MINIPRO_DESC" > "$APP/assets/minipro/VERSION.txt"

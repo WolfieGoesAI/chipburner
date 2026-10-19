@@ -75,6 +75,7 @@ fi
 git -C "$WORK/src/minipro-git" fetch -q --depth 1 origin 'refs/tags/0.7.4:refs/tags/0.7.4' 2>/dev/null || true
 MINIPRO_DESC="$(git -C "$WORK/src/minipro-git" describe --tags --always 2>/dev/null || echo unknown) ($(git -C "$WORK/src/minipro-git" log -1 --format=%cs))"
 echo "minipro source: $MINIPRO_DESC"
+"$ROOT/scripts/patch-minipro.sh" "$WORK/src/minipro-git"
 
 # ---------- per-architecture builds ----------
 for ARCH in "${ARCHS[@]}"; do
@@ -143,6 +144,8 @@ cp "$WORK/src/minipro-git/LICENSE"* "$APP/Contents/Resources/minipro/" 2>/dev/nu
 cat > "$APP/Contents/Resources/minipro/SOURCE.txt" <<EOF
 This app runs minipro ($MINIPRO_DESC), licensed under the GNU GPL v3.
 Source code: https://gitlab.com/DavidGriffith/minipro
+ChipBurner applies a small fix before building it (TL866A voltage byte): scripts/patch-minipro.sh
+in https://github.com/WolfieGoesAI/chipburner
 libusb $LIBUSB_VERSION (LGPL 2.1): https://github.com/libusb/libusb
 EOF
 APP_COMMIT="$(git -C "$ROOT" rev-parse --short=7 HEAD 2>/dev/null || echo unknown)"
