@@ -1,6 +1,6 @@
 import Cocoa
 
-final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFieldDelegate, NSTextViewDelegate {
+final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFieldDelegate, NSTextViewDelegate, NSMenuItemValidation {
 
     // MARK: State
     private var buffer = Data()
@@ -42,6 +42,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     private let memoryPopup = NSPopUpButton(frame: .zero, pullsDown: false)
 
     private var actionButtons: [NSButton] = []
+    /// Read, Blank Check, Erase, Program…, Verify – memory operations, off for logic chips
+    private var memoryButtons: [NSButton] = []
     private var stopButton: NSButton!
     private var eraseButton: NSButton!
     private lazy var configButton: NSButton = button("Fuses & Locks…", #selector(openConfigWindow(_:)))
@@ -208,6 +210,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         eraseButton = erase
         stopButton = button("Stop", #selector(stop(_:)))
         actionButtons = [read, blank, erase, program, verify, logic, logicID]
+        memoryButtons = [read, blank, erase, program, verify]
         let jedButton = button("PLD…", #selector(showPLDMenu(_:)))
         let openButton = button("Open…", #selector(openFile(_:)))
         let saveHex = button("Save…", #selector(saveFile(_:)))
@@ -592,6 +595,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         actionButtons.forEach { $0.isEnabled = !isBusy }
         configButton.isEnabled = !isBusy && currentConfig != nil
         let testKind = chipDetails.map { $0.kind }
+        // logic chips are tested with Logic Test – none of the memory operations apply
+        if testKind == .logic {
+            memoryButtons.forEach { $0.isEnabled = false; $0.toolTip = "Not for logic chips – use Logic Test." }
+        } else {
+            memoryButtons.forEach { if $0 !== eraseButton { $0.toolTip = nil } }
+        }
         logicTestButton.isEnabled = !isBusy && testKind == .logic
         logicTestButton.toolTip = logicTestButton.isEnabled ? "Standard Test runs minipro's test vectors once; Extended Test adds an exhaustive or full-sequence test and repeated runs."
             : "Logic Test works with logic chips (74xx, 40xx …). Select one with Search or Logic Ident."
@@ -603,7 +612,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
                                                     : (chipDetails?.kind == .mcu
                                                        ? "minipro's database has no fuse/config layout for this chip, so its configuration bits can't be read or written here."
                                                        : "The selected chip has no fuses, user ID or lock bits in the database.")
-        if let b = eraseButton {
+        if let b = eraseButton, testKind != .logic {
             let m = eraseMethod
             if case .unavailable(let why) = m { b.isEnabled = false; b.toolTip = why }
             else { b.toolTip = m == .command ? "Erases the chip with its erase command." : "This chip has no erase command: it is filled with FF (its blank state) and verified." }
@@ -1091,6 +1100,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         }
         log("ID check: the chip reported \(gotText) instead of 0x\(expected).")
         showError("The chip's ID doesn't match \(name)", text)
+    }
+
+    /// The Chip menu's memory operations follow the buttons (their shortcuts work while the buttons are off).
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        let memoryActions: [Selector] = [#selector(readChip(_:)), #selector(blankCheck(_:)), #selector(verifyChip(_:)),
+                                         #selector(programChip(_:)), #selector(eraseChip(_:))]
+        if let a = item.action, memoryActions.contains(a) {
+            if isBusy || chipDetails?.kind == .logic { return false }
+            if a == #selector(eraseChip(_:)), case .unavailable = eraseMethod { return false }
+        }
+        return true
     }
 
     @objc func readChip(_ sender: Any?) {

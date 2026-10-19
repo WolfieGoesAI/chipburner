@@ -102,7 +102,12 @@ for ARCH in "${ARCHS[@]}"; do
 
   log "ChipBurner for $ARCH"
   xcrun swiftc -O -sdk "$SDK" -target "$ARCH-apple-macos$(swift_min_for "$ARCH")" \
-    "$ROOT"/Sources/*.swift -o "$WORK/ChipBurner.$ARCH"
+    "$ROOT"/Sources/*.swift -o "$WORK/ChipBurner.$ARCH" 2> "$WORK/swiftc-$ARCH.log" || {
+    cat "$WORK/swiftc-$ARCH.log"
+    printf '### swiftc errors (%s)\n%s\n' "$ARCH" "$(grep -E 'error:' -A3 "$WORK/swiftc-$ARCH.log" | head -120)" > "$ROOT/diag.txt"
+    false
+  }
+  cat "$WORK/swiftc-$ARCH.log" >&2
 done
 
 log "Making universal binaries"
@@ -194,7 +199,11 @@ echo "::notice title=Chip search for 27C256::$NOTE"
 grep -q -i '27C256' <<<"$SEARCH" || { echo "ERROR: chip search returned nothing"; false; }
 
 log "Test: ChipBurner's database reader against the bundled database"
-xcrun swiftc -O -sdk "$SDK" "$ROOT/Sources/ChipDatabase.swift" "$ROOT/Sources/ChipCapabilities.swift" "$ROOT/Sources/DataFormats.swift" "$ROOT/Sources/BufferOps.swift" "$ROOT/Sources/ChipTests.swift" "$ROOT/Sources/Pinouts.swift" "$ROOT/Sources/LogicModels.swift" "$ROOT/Sources/LogicDsl.swift" "$ROOT/Sources/LogicVectors.swift" "$ROOT/Sources/GalDecoder.swift" "$ROOT/Sources/GalAssembler.swift" "$ROOT/tests/dbtest/main.swift" -o "$WORK/dbtest"
+xcrun swiftc -O -sdk "$SDK" "$ROOT/Sources/ChipDatabase.swift" "$ROOT/Sources/ChipCapabilities.swift" "$ROOT/Sources/DataFormats.swift" "$ROOT/Sources/BufferOps.swift" "$ROOT/Sources/ChipTests.swift" "$ROOT/Sources/Pinouts.swift" "$ROOT/Sources/LogicModels.swift" "$ROOT/Sources/LogicDsl.swift" "$ROOT/Sources/LogicVectors.swift" "$ROOT/Sources/GalDecoder.swift" "$ROOT/Sources/GalAssembler.swift" "$ROOT/tests/dbtest/main.swift" -o "$WORK/dbtest" 2> "$WORK/dbtest-swiftc.log" || {
+  cat "$WORK/dbtest-swiftc.log"
+  printf '### dbtest swiftc errors\n%s\n' "$(grep -E 'error:' -A3 "$WORK/dbtest-swiftc.log" | head -120)" > "$ROOT/diag.txt"
+  false
+}
 DBT="$("$WORK/dbtest" "$APP/Contents/Resources/minipro/infoic.xml" "$APP/Contents/Resources/minipro/logicic.xml" "$ROOT/Resources/logic/logic-models.txt" 2>&1)" || {
   echo "$DBT"
   X="$APP/Contents/Resources/minipro/infoic.xml"
