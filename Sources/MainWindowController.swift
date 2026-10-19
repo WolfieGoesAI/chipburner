@@ -826,6 +826,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
                 if !ok { NSSound.beep() }
             }
             let all = collected.joined(separator: "\n")
+            if !ok && !reportsOwnResult { self.explainIDFailure(all) }
             // Every job prints the programmer's firmware and serial number; keep the top line current.
             if let model = self.programmerModel, all.contains("Serial code:") {
                 self.showProgrammer(model: model, output: all)
@@ -1040,9 +1041,49 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
                 guard let self = self, let name = name else { return }
                 self.selectChip(name)
                 self.setStatus("Chip ID \(idText): \(name) selected", result: true)
+                if Self.isLowVoltage(name) {
+                    self.log("Note: \(name) is a 3.3 V chip; the EPROM ID read ran it at 5 V with 12 V on A9.")
+                    self.showInfo("\(name) is a 3.3 V chip",
+                                  "Chip Ident's EPROM ID read ran it at 5 V with 12 V on A9 for a moment. That is above a 3.3 V chip's rating – most survive one short read, but don't repeat it. Reading and programming \(name) use its own 3.3 V settings.\n\nIf the chip doesn't answer afterwards (ID 0xFFFF), check its seating first.")
+                }
             }
             picker.present(on: w)
         }
+    }
+
+    /// 3.3 V parts (29LV, 39VF, 49LV …): an EPROM-style ID read runs them at 5 V with 12 V on A9.
+    static func isLowVoltage(_ name: String) -> Bool {
+        name.range(of: "\\d{2}(LV|BV|VF|WF|LF)\\d", options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
+    /// minipro stops a read/write when the chip's ID isn't the selected chip's; say what that means.
+    private func explainIDFailure(_ output: String) {
+        let re = try? NSRegularExpression(pattern: "Invalid Chip ID: expected 0x([0-9A-Fa-f]+), got 0x([0-9A-Fa-f]+)(?: \\(([^)]*)\\))?")
+        let ns = output as NSString
+        guard let m = re?.firstMatch(in: output, range: NSRange(location: 0, length: ns.length)),
+              let got = UInt32(ns.substring(with: m.range(at: 2)), radix: 16) else { return }
+        let expected = ns.substring(with: m.range(at: 1)).uppercased()
+        let gotText = String(format: "0x%04X", got)
+        let name = chip
+        var text: String
+        if got == 0xFFFF || got == 0 || got == 0xFFFFFFFF {
+            text = "The chip didn't answer the ID request (it read \(gotText)), so nothing was read or written. Usually this means:\n\n"
+                + "• The chip isn't making contact – check that it sits fully in the socket or adapter, pin 1 at the lever end, and that a PLCC/TSOP adapter is the right one and seated properly.\n"
+                + "• The selected type doesn't match the chip, so it is driven at the wrong voltage or with the wrong commands.\n"
+                + "• The chip is faulty."
+            if Self.isLowVoltage(name) {
+                text += "\n\n\(name) is a 3.3 V chip. If it was identified with Chip Ident's EPROM ID read, that read ran it at 5 V with 12 V on A9, which is above a 3.3 V chip's rating and may have damaged it."
+            }
+            text += "\n\n“Skip chip ID check” (Options…) makes the operation go ahead anyway, but a chip that doesn't answer its ID usually reads as all FF."
+        } else {
+            let others = ChipDatabase.shared.chips(withID: got, programmer: Minipro.shared.programmerType, packageSuffix: nil).map { $0.name }
+            var seen = Set<String>()
+            let list = others.filter { seen.insert($0.uppercased()).inserted }.prefix(6)
+            text = "\(name) has ID 0x\(expected), but the chip in the socket reports \(gotText), so nothing was read or written."
+            text += list.isEmpty ? " No chip in the database has that ID." : "\n\nChips with ID \(gotText): " + list.joined(separator: ", ") + ".\n\nSelect the one printed on the chip, or tick “Skip chip ID check” (Options…) if you're sure the selected type is right."
+        }
+        log("ID check: the chip reported \(gotText) instead of 0x\(expected).")
+        showError("The chip's ID doesn't match \(name)", text)
     }
 
     @objc func readChip(_ sender: Any?) {
