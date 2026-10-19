@@ -81,8 +81,8 @@ final class ChipTestWindowController: NSWindowController {
             if setup.batteryBacked { backupBox.title += " (recommended: battery-backed RAM keeps its data)" }
             options = [solidBox, checkerBox, addressBox, backupBox]
         } else {
-            ["2", "3", "4", "5"].forEach { readsPopup.addItem(withTitle: $0) }
-            readsPopup.selectItem(withTitle: "3")
+            ["4", "16", "64", "256"].forEach { readsPopup.addItem(withTitle: $0) }
+            readsPopup.selectItem(withTitle: "4")
             let readsRow = NSStackView(views: [NSTextField(labelWithString: "Read the chip"), readsPopup, NSTextField(labelWithString: "times and compare the reads")])
             readsRow.orientation = .horizontal
             analyseBox.state = .on
@@ -295,17 +295,21 @@ final class ChipTestWindowController: NSWindowController {
 
     private func memorySteps() -> [Step] {
         let size = setup.size
-        let n = Int(readsPopup.titleOfSelectedItem ?? "3") ?? 3
+        let n = Int(readsPopup.titleOfSelectedItem ?? "4") ?? 4
         var steps: [Step] = []
-        var reads: [URL] = []
+        // Read 1 is kept (the backup for the write test); later reads are compared with it and deleted at once.
+        let first = tempURL("health-read-1.bin"), next = tempURL("health-read-next.bin")
+        try? FileManager.default.removeItem(at: first)
+        var acc: ChipTests.StabilityAccumulator?
         for i in 1...n {
-            let url = tempURL("health-read-\(i).bin")
-            try? FileManager.default.removeItem(at: url)
-            reads.append(url)
+            let url = i == 1 ? first : next
             steps.append(Step(title: "Read \(i) of \(n)", args: setup.readArgs + ["-r", url.path]) { [unowned self] ok, out in
                 guard self.minipro(ok, out, "Read \(i)") else { return false }
-                if i == n {
-                    self.afterReads(reads)
+                guard let data = try? Data(contentsOf: url) else { self.failures += 1; self.say("✗ Could not load read \(i)."); return false }
+                if i == 1 { acc = ChipTests.StabilityAccumulator(base: data) }
+                else { acc?.add(data); try? FileManager.default.removeItem(at: url) }
+                if i == n, let acc = acc {
+                    self.afterReads(acc)
                     if self.unstable && self.writeTestBox.isEnabled && self.writeTestBox.state == .on {
                         self.say("Write test skipped: the reads weren't identical, so the backup of the contents can't be trusted.")
                         return false
@@ -315,7 +319,7 @@ final class ChipTestWindowController: NSWindowController {
             })
         }
         if writeTestBox.isEnabled && writeTestBox.state == .on {
-            let backup = reads[0]
+            let backup = first
             for p in [ChipTests.Pattern.x55, .xAA] + ChipTests.Pattern.addressPatterns(for: size) {
                 let file = tempURL("health-\(p).bin"), back = tempURL("health-\(p)-read.bin")
                 let data = p.data(count: size)
@@ -337,18 +341,17 @@ final class ChipTestWindowController: NSWindowController {
         return steps
     }
 
-    private func afterReads(_ urls: [URL]) {
-        let reads = urls.compactMap { try? Data(contentsOf: $0) }
-        guard reads.count == urls.count, let first = reads.first else { failures += 1; say("✗ Could not load the reads."); return }
-        let st = ChipTests.stability(reads)
+    private func afterReads(_ acc: ChipTests.StabilityAccumulator) {
+        let first = Data(acc.base)
+        let st = acc.result()
         unstable = !st.ok
         if st.ok {
-            say("✓ \(reads.count) reads are identical – no unstable bits.")
+            say("✓ \(acc.reads) reads are identical – no unstable bits.")
         } else {
             failures += 1
-            say("✗ \(st.unstableBytes) byte(s) read differently between reads; unstable bits: \(ChipTests.bitList(st.unstableBits)).")
+            say("✗ \(st.unstableBytes) byte(s) read differently between the \(acc.reads) reads; unstable bits: \(ChipTests.bitList(st.unstableBits)).")
             say("  This is typical of a weak, ageing or partly erased EPROM, or of poor socket contact.")
-            for s in st.samples { say("    \(addr(s.address)): " + s.values.map { String(format: "%02X", $0) }.joined(separator: " ")) }
+            for s in st.counts { say("    \(addr(s.address)): " + s.counts.map { String(format: "%02X ×%d", $0.value, $0.count) }.joined(separator: "  ")) }
         }
         if analyseBox.state == .on {
             say("Contents:")

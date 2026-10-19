@@ -105,7 +105,52 @@ enum ChipTests {
         var unstableBytes = 0
         var unstableBits: UInt8 = 0
         var samples: [(address: Int, values: [UInt8])] = []
+        /// Per unstable address: each value read and how many times.
+        var counts: [(address: Int, counts: [(value: UInt8, count: Int)])] = []
         var ok: Bool { unstableBytes == 0 }
+    }
+
+    /// Compares reads one at a time with the first, so even 256 reads of a large chip need only two reads in
+    /// memory. For the first unstable addresses it counts how often each value was read.
+    final class StabilityAccumulator {
+        let base: [UInt8]
+        private var diff: [UInt8]
+        private var tracked: [(address: Int, counts: [(value: UInt8, count: Int)])] = []
+        private let maxSamples: Int
+        private(set) var reads = 1
+
+        init(base: Data, maxSamples: Int = 12) {
+            self.base = [UInt8](base)
+            diff = [UInt8](repeating: 0, count: base.count)
+            self.maxSamples = maxSamples
+        }
+
+        func add(_ data: Data) {
+            let read = [UInt8](data)
+            let n = min(base.count, read.count)
+            for t in tracked.indices where tracked[t].address < n {
+                let v = read[tracked[t].address]
+                if let k = tracked[t].counts.firstIndex(where: { $0.value == v }) { tracked[t].counts[k].count += 1 }
+                else { tracked[t].counts.append((v, 1)) }
+            }
+            for i in 0..<n {
+                let x = read[i] ^ base[i]
+                if x == 0 { continue }
+                if diff[i] == 0 && tracked.count < maxSamples {
+                    // first time this byte differs: every earlier read gave the base value
+                    tracked.append((i, [(base[i], reads), (read[i], 1)]))
+                }
+                diff[i] |= x
+            }
+            reads += 1
+        }
+
+        func result() -> StabilityResult {
+            var r = StabilityResult()
+            for d in diff where d != 0 { r.unstableBytes += 1; r.unstableBits |= d }
+            r.counts = tracked
+            return r
+        }
     }
 
     static func stability(_ reads: [Data], maxSamples: Int = 12) -> StabilityResult {

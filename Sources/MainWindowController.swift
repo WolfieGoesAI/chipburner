@@ -1258,10 +1258,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             detail.stringValue = "ChipBurner has no working model of \(name) yet, so only the repeated standard test is available. Exhaustive and sequence tests cover the common gates, buffers, decoders, multiplexers, adders, comparators, flip-flops, latches, counters and shift registers."
         }
         let repeatPopup = NSPopUpButton(frame: .zero, pullsDown: false)
-        let counts = [0, 10, 25, 50, 100]
-        for c in counts { repeatPopup.addItem(withTitle: c == 0 ? "Don't repeat" : "\(c) times") }
+        let counts = [16, 64, 256]
+        for c in counts { repeatPopup.addItem(withTitle: "\(c) times") }
         let saved = UserDefaults.standard.integer(forKey: "logicRepeats")
-        repeatPopup.selectItem(at: counts.firstIndex(of: saved == 0 && UserDefaults.standard.object(forKey: "logicRepeats") == nil ? 10 : saved) ?? 1)
+        repeatPopup.selectItem(at: counts.firstIndex(of: saved) ?? 0)
         let repeatRow = NSStackView(views: [NSTextField(labelWithString: "Repeat the standard test:"), repeatPopup])
         repeatRow.orientation = .horizontal
         let note = NSTextField(wrappingLabelWithString: "Repeated runs catch chips that fail now and then (marginal or overheating parts). The TL866A tests at a fixed 5 V.")
