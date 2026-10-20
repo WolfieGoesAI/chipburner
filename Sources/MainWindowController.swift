@@ -469,6 +469,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
             return
         }
         voltageLabel.textColor = .secondaryLabelColor
+        if chipDetails?.kind == .logic {
+            // Logic tests run at the chip's database voltage; ChipBurner passes no voltage options to them.
+            voltageLabel.stringValue = "\(currentCaps?.logicVCC ?? "5V") for the logic test (fixed)"
+            return
+        }
         guard let c = currentCaps else { voltageLabel.stringValue = "chip defaults"; return }
         guard c.hasVoltageOptions else { voltageLabel.stringValue = "fixed for this chip"; return }
         let parts = [c.vpp.map { "VPP \($0)" }, c.vdd.map { "VDD \($0)" }, c.vcc.map { "VCC \($0)" }, c.pulse.map { "pulse \($0)" }].compactMap { $0 }
@@ -496,6 +501,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
 
     @objc func editVoltages(_ sender: Any?) {
         guard requireChip(), let w = window else { return }
+        if chipDetails?.kind == .logic {
+            showInfo("\(chip) is tested at \(currentCaps?.logicVCC ?? "5V")",
+                     "Logic tests run at the supply voltage minipro's logic database gives for the chip – 5 V for all of them – and the programmer drives the inputs at the same level. There is nothing to adjust.")
+            return
+        }
         guard let c = currentCaps else {
             refreshCapabilities()
             showError("Still reading the chip's settings.", "Try again in a moment.")

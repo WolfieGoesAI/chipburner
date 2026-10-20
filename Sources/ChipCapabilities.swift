@@ -7,6 +7,7 @@ struct ChipCapabilities {
     var vdd: String?      // default write VDD
     var vcc: String?      // default verify VCC
     var pulse: String?    // default pulse delay, e.g. "100us"
+    var logicVCC: String? // logic ICs: the logic-test supply ("Default VCC voltage: 5 V") – shown, never adjustable here
 
     var hasVoltageOptions: Bool { vpp != nil || vdd != nil || vcc != nil || pulse != nil }
 
@@ -26,6 +27,7 @@ struct ChipCapabilities {
             let value = rawValue.replacingOccurrences(of: " ", with: "")
             if key == "icsp" { c.icspSupported = !rawValue.isEmpty && rawValue != "-" }
             else if value.isEmpty { continue }
+            else if key == "vcc voltage" { c.logicVCC = value }
             else if key.hasPrefix("vpp") { c.vpp = value }
             else if key.hasPrefix("vdd") { c.vdd = value }
             else if key.hasPrefix("vcc") { c.vcc = value }

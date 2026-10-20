@@ -74,6 +74,8 @@ if let live = ProcessInfo.processInfo.environment["CHIPBURNER_D_AM27C256"], !liv
     expect(c.hasVoltageOptions && c.vpp == "13.5V" && c.vdd == "6.5V" && c.vcc == "5V" && c.pulse == "100us",
            "bundled minipro -d AM27C256@DIP28 parses to 13.5/6.5/5 V, 100 us (got \(c.vpp ?? "-") \(c.vdd ?? "-") \(c.vcc ?? "-") \(c.pulse ?? "-"))")
 }
+let logic4516 = ChipCapabilities.parse("Name: 4516\nPackage:\t DIP16\nVector count:\t 12\n*******************************\nDefault VCC voltage: 5 V\nAvailable VCC voltages [V]: 1.8, 2.5, 3.3, 5")
+expect(logic4516.logicVCC == "5V" && !logic4516.hasVoltageOptions, "4516 -d: logic-test VCC 5 V, no adjustable voltages")
 let pic = ChipCapabilities.parse("Name: PIC16F84A\nPackage: DIP18\nICSP: ICP002.JPG\nProtocol: 0x63")
 expect(pic.icspSupported && !pic.hasVoltageOptions, "PIC16F84A -d: ICSP capable, no voltage options")
 let gal = ChipCapabilities.parse("Name: GAL16V8\nICSP: -\n*******************************\nVPP programming voltage: 16V")
