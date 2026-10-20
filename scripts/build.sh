@@ -204,6 +204,8 @@ xcrun swiftc -O -sdk "$SDK" "$ROOT/Sources/ChipDatabase.swift" "$ROOT/Sources/Ch
   printf '### dbtest swiftc errors\n%s\n' "$(grep -E 'error:' -A3 "$WORK/dbtest-swiftc.log" | head -120)" > "$ROOT/diag.txt"
   false
 }
+# Real `minipro -d` output for an EPROM with adjustable voltages, so dbtest checks the parser against this minipro.
+export CHIPBURNER_D_AM27C256="$("$APP/Contents/MacOS/minipro" --infoic "$APP/Contents/Resources/minipro/infoic.xml" --logicic "$APP/Contents/Resources/minipro/logicic.xml" -q TL866A -d AM27C256@DIP28 2>&1 || true)"
 DBT="$("$WORK/dbtest" "$APP/Contents/Resources/minipro/infoic.xml" "$APP/Contents/Resources/minipro/logicic.xml" "$ROOT/Resources/logic/logic-models.txt" 2>&1)" || {
   echo "$DBT"
   X="$APP/Contents/Resources/minipro/infoic.xml"

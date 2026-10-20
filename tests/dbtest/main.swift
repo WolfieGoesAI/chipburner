@@ -65,6 +65,15 @@ expect(i7400?.gndPins == [7] && i7400?.vccPins == [14], "7400 power pins are GND
 // minipro -d parsing (samples captured from minipro 0.7.4)
 let amd = ChipCapabilities.parse("Name: AM27C256@DIP28\nAvailable on: TL866A/CS\nMemory: 32768 Bytes\nPackage: DIP28\nICSP: -\nProtocol: 0x31\n*******************************\nVPP programming voltage: 13.5V\nVDD write voltage: 6.5V\nVCC verify voltage: 5V\nPulse delay: 100us")
 expect(!amd.icspSupported && amd.vpp == "13.5V" && amd.vdd == "6.5V" && amd.vcc == "5V" && amd.pulse == "100us", "AM27C256 -d: no ICSP, defaults 13.5/6.5/5 V, 100 us")
+// minipro 0.7.4-48+ wording (what the bundled minipro prints now)
+let amdNew = ChipCapabilities.parse("Name: AM27C256@DIP28\nICSP: -\n*******************************\nDefault VPP programming voltage: 13.5 V\nAvailable VPP voltages [V]: 10, 12.5, 13.5, 14, 16, 17, 18, 21\nDefault VDD write voltage: 6.5 V\nAvailable VDD write voltages [V]: 3.3, 4, 4.5, 5, 5.5, 6.5\nDefault VCC verify voltage: 5 V\nAvailable VCC verify voltages [V]: 3.3, 4, 4.5, 5, 5.5, 6.5\nDefault write pulse: 100 us\nAvailable write pulse[us]: 1-65535")
+expect(amdNew.vpp == "13.5V" && amdNew.vdd == "6.5V" && amdNew.vcc == "5V" && amdNew.pulse == "100us", "AM27C256 -d (current wording): defaults 13.5/6.5/5 V, 100 us")
+// …and what the bundled minipro really prints (build.sh passes it in)
+if let live = ProcessInfo.processInfo.environment["CHIPBURNER_D_AM27C256"], !live.isEmpty {
+    let c = ChipCapabilities.parse(live)
+    expect(c.hasVoltageOptions && c.vpp == "13.5V" && c.vdd == "6.5V" && c.vcc == "5V" && c.pulse == "100us",
+           "bundled minipro -d AM27C256@DIP28 parses to 13.5/6.5/5 V, 100 us (got \(c.vpp ?? "-") \(c.vdd ?? "-") \(c.vcc ?? "-") \(c.pulse ?? "-"))")
+}
 let pic = ChipCapabilities.parse("Name: PIC16F84A\nPackage: DIP18\nICSP: ICP002.JPG\nProtocol: 0x63")
 expect(pic.icspSupported && !pic.hasVoltageOptions, "PIC16F84A -d: ICSP capable, no voltage options")
 let gal = ChipCapabilities.parse("Name: GAL16V8\nICSP: -\n*******************************\nVPP programming voltage: 16V")

@@ -10,19 +10,26 @@ struct ChipCapabilities {
 
     var hasVoltageOptions: Bool { vpp != nil || vdd != nil || vcc != nil || pulse != nil }
 
-    /// Parses lines like "ICSP: -", "VPP programming voltage: 13.5V", "Pulse delay: 100us".
+    /// Parses minipro -d output. minipro 0.7.4+ prints "Default VPP programming voltage: 13.5 V",
+    /// "Default VDD write voltage: 6.5 V", "Default VCC verify voltage: 5 V", "Default write pulse: 100 us"
+    /// (each followed by an "Available …" list); older versions printed "VPP programming voltage: 13.5V" and
+    /// "Pulse delay: 100us". Values are kept without spaces ("13.5V", "100us").
     static func parse(_ output: String) -> ChipCapabilities {
         var c = ChipCapabilities()
         for raw in output.components(separatedBy: .newlines) {
             let line = raw.trimmingCharacters(in: .whitespaces)
             guard let colon = line.firstIndex(of: ":") else { continue }
-            let key = line[..<colon].lowercased()
-            let value = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
-            if key == "icsp" { c.icspSupported = !value.isEmpty && value != "-" }
+            var key = line[..<colon].lowercased()
+            if key.hasPrefix("available") { continue }
+            if key.hasPrefix("default ") { key = String(key.dropFirst("default ".count)) }
+            let rawValue = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
+            let value = rawValue.replacingOccurrences(of: " ", with: "")
+            if key == "icsp" { c.icspSupported = !rawValue.isEmpty && rawValue != "-" }
+            else if value.isEmpty { continue }
             else if key.hasPrefix("vpp") { c.vpp = value }
             else if key.hasPrefix("vdd") { c.vdd = value }
             else if key.hasPrefix("vcc") { c.vcc = value }
-            else if key.hasPrefix("pulse") { c.pulse = value }
+            else if key.contains("pulse") { c.pulse = value }
         }
         return c
     }
