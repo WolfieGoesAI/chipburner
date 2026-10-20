@@ -82,6 +82,7 @@ expect(db.info(for: "23128@DIP28", programmer: "TL866A").map { $0.codeSize == 16
        && db.info(for: "23256@DIP28", programmer: "TL866A").map { $0.codeSize == 32768 } == true
        && db.info(for: "23C256@DIP28", programmer: "TL866A") != nil
        && db.info(for: "23128@DIP28", programmer: "TL866II") != nil, "23128/23256 mask ROMs in the TL866A and TL866II databases (patch-minipro.sh)")
+expect(db.info(for: "GAL16V8B", programmer: "TL866A") != nil && db.info(for: "GAL20V8B", programmer: "TL866A") != nil, "GAL16V8B / GAL20V8B entries exist (chosen when a .jed is loaded)")
 expect(db.info(for: "AM27C256@DIP28", programmer: "TL866A")?.canErase == false, "AM27C256 (UV EPROM) has no erase command")
 
 for n in ["PIC16F84A", "PIC16F628A", "ATMEGA8A", "ATMEGA88PA", "ATTINY2313", "AT89C2051", "AT89S52"] {

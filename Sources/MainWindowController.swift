@@ -1149,12 +1149,27 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         let a = NSAlert()
         a.messageText = "Program \(chip)?"
         a.informativeText = "\(buffer.count) bytes from “\(bufferName)” will be written to the \(m.label) \(where_).\n\nVoltages: \(volts.summary)."
+        if let warn = Self.originalGALWarning(chip) {
+            a.messageText = "Program \(chip) – the original part with no letter?"
+            a.informativeText = warn + "\n\n" + a.informativeText
+            a.alertStyle = .warning
+        }
         a.addButton(withTitle: "Program")
         a.addButton(withTitle: "Cancel")
         a.beginSheetModal(for: w) { [weak self] resp in
             guard let self = self, resp == .alertFirstButtonReturn else { return }
             self.runJob("Program \(self.chip)", ["-p", self.chip] + self.connectionArgs + m.memArgs + ["-w", file.path] + volts.args + self.optionArgs(.write))
         }
+    }
+
+    /// minipro's plain GAL16V8 / GAL20V8 entries are the original Lattice parts. GAL16V8A/B/C/D, GAL20V8A/B/C/D and the
+    /// Atmel ATF parts take their architecture bits (mode, polarity, output enables) in a different order, so programming
+    /// one of those with the plain entry leaves it in the wrong mode – it verifies, but doesn't work.
+    static func originalGALWarning(_ chip: String) -> String? {
+        let c = chip.uppercased()
+        guard c == "GAL16V8" || c == "GAL20V8" || c.hasPrefix("GAL16V8@") || c.hasPrefix("GAL20V8@") else { return nil }
+        let fam = c.hasPrefix("GAL16") ? "GAL16V8" : "GAL20V8"
+        return "“\(fam)” is only for the original Lattice \(fam) with no letter after the number. A \(fam)A, B, C or D needs “\(fam)B” (one entry for all four), and an Atmel part its ATF entry. With the wrong entry the chip verifies but ends up in the wrong mode and doesn't work."
     }
 
     enum EraseMethod: Equatable { case command, fill, unavailable(String) }
@@ -1777,13 +1792,17 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         bufferName = name
         updateBufferViews()
         log("Loaded \(name) into the buffer.")
-        guard let type = chipType else { return }
+        guard let fuseType = chipType else { return }
         let current = chip.uppercased()
-        let family = type.replacingOccurrences(of: "GAL", with: "")
-        if current.contains(family) { return }
+        let family = fuseType.replacingOccurrences(of: "GAL", with: "")
+        if current.contains(family) && Self.originalGALWarning(current) == nil { return }
+        // The plain GAL16V8 / GAL20V8 entries are the original Lattice parts, whose architecture bits are written in a
+        // different order; the common lettered parts (A/B/C/D) share the …B entry. Pick that one.
+        let lettered = fuseType + "B"
+        let type = ChipDatabase.shared.info(for: lettered, programmer: Minipro.shared.programmerType) != nil ? lettered : fuseType
         if ChipDatabase.shared.info(for: type, programmer: Minipro.shared.programmerType) != nil {
             selectChip(type)
-            log("Chip set to \(type) to match the fuse map; pick the exact variant (e.g. \(type)B or ATF\(family)B) with Search if needed.")
+            log("Chip set to \(type) to match the fuse map (this entry also covers \(fuseType)A, C and D); for an Atmel part pick ATF\(family)B with Search.")
         } else {
             log("Note: \(type) isn't in the \(Minipro.shared.programmerType) database, so this programmer can't program it.")
         }

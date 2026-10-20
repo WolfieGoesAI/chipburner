@@ -252,6 +252,18 @@ fun PickDialog(title: String, note: String, items: List<String>, onDismiss: () -
     )
 }
 
+/** minipro's plain GAL16V8 / GAL20V8 entries are the original Lattice parts; the lettered and Atmel parts take their
+ *  architecture bits in a different order, so programming them with the plain entry leaves them in the wrong mode. */
+private fun originalGalWarning(chip: String): String? {
+    val c = chip.uppercase()
+    val fam = when {
+        c == "GAL16V8" || c.startsWith("GAL16V8@") -> "GAL16V8"
+        c == "GAL20V8" || c.startsWith("GAL20V8@") -> "GAL20V8"
+        else -> return null
+    }
+    return "“$fam” is only for the original Lattice $fam with no letter after the number. A ${fam}A, B, C or D needs “${fam}B” (one entry for all four), and an Atmel part its ATF entry. With the wrong entry the chip verifies but ends up in the wrong mode and doesn't work."
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ProgramSheet(state: AppState, onDismiss: () -> Unit) {
@@ -267,6 +279,9 @@ private fun ProgramSheet(state: AppState, onDismiss: () -> Unit) {
                     else -> "Writes over"
                 }, Modifier.weight(1f))
                 Fact("After", if (state.noVerify) "No verify" else "Verify", Modifier.weight(1f))
+            }
+            originalGalWarning(state.chip)?.let {
+                Text(it, fontFamily = Sans, fontSize = 13.sp, color = C.red)
             }
             state.chipInfo?.let { ci ->
                 if (ci.codeSize > 0 && ci.codeSize != state.buffer.size && !state.allowSize) {
