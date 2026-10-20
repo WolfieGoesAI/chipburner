@@ -47,6 +47,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
     private var stopButton: NSButton!
     private var eraseButton: NSButton!
     private lazy var configButton: NSButton = button("Fuses & Locks…", #selector(openConfigWindow(_:)))
+    private lazy var voltButton: NSButton = button("Voltages…", #selector(editVoltages(_:)))
     private lazy var chipTestButton: NSButton = button("Chip Test…", #selector(openChipTest(_:)))
     private lazy var logicTestButton: NSButton = button("Logic Test…", #selector(showLogicTestMenu(_:)))
     private let skipID = NSButton(checkboxWithTitle: "Skip chip ID check", target: nil, action: nil)
@@ -224,7 +225,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         // Memory, connection, voltages and settings share one aligned column.
         let small = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
         let controlWidth: CGFloat = 240
-        let voltButton = button("Voltages…", #selector(editVoltages(_:)))
+        let voltButton = self.voltButton
         let settingsButton = button("Options…", #selector(showSettings(_:)))
         for c in [memoryPopup, connectionPopup] as [NSControl] {
             c.controlSize = .small
@@ -630,6 +631,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         stopButton?.isEnabled = isBusy
         chipField.isEnabled = !isBusy
         updateMemoryAndConnection()
+        // Voltages… only for chips with adjustable programming voltages (UV EPROMs, GALs …); minipro -d tells,
+        // so it stays dimmed until that answer is in.
+        let adjustable = chipDetails?.kind != .logic && currentCaps?.hasVoltageOptions == true
+        voltButton.isEnabled = !isBusy && adjustable
+        voltButton.toolTip = adjustable ? "Change the programming voltages and pulse length for this chip."
+            : (chipDetails?.kind == .logic ? "Logic tests run at a fixed 5 V." : "The selected chip has no adjustable voltages.")
     }
 
     /// Memory areas the selected chip has, in `memoryTypes` order: code, data, config, user row, calibration.
