@@ -1,0 +1,98 @@
+### device
+11
+### minipro on Android
+Supported programmers: TL866A/CS, TL866II+, T48, T56, T76
+No programmer found.
+minipro version 0.7.4     A free and open TL866 series programmer
+Commit date:	2026-09-21 19:46:10 +0000
+Git commit:	3e2f4911fa86f72a57ae0ace777342e75da5e7cc
+--- -L 27C256
+/usr/local/share/minipro/logicic.xml: No such file or directory
+logicic.xml: No such file or directory
+--- -k (no programmer attached)
+[No programmer found]
+### install and start
+Success
+TotalTime: 1229
+WaitTime: 1236
+Complete
+tapped Search 95 280
+tapped AM27C256 60 498
+tapped Info 95 336
+tapped Pinout 225 336
+tapped Test 86 551
+tapped Search 95 280
+tapped 74161 45 315
+tapped Info 95 336
+tapped Pinout 225 336
+tapped Identify 225 280
+tapped More 288 60
+tapped Buffer 118 615
+tapped New 45 120
+tapped OK 267 398
+tapped A 105 528
+tapped 5 216 478
+tapped Test 201 615
+tapped Extended test 214 302
+tapped Search logic chip 86 141
+tapped Log 282 615
+### crashes
+10-20 06:12:35.622  6711  6711 I AndroidRuntime: Leaving lock profiling enabled
+10-20 06:12:35.672  6711  6711 D AndroidRuntime: Calling main entry com.android.commands.uiautomator.Launcher
+10-20 06:12:36.702  6711  6711 D AndroidRuntime: Shutting down VM
+10-20 06:12:37.182  6727  6727 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+10-20 06:12:37.183  6727  6727 I AndroidRuntime: Using default boot image
+10-20 06:12:37.183  6727  6727 I AndroidRuntime: Leaving lock profiling enabled
+10-20 06:12:37.231  6727  6727 D AndroidRuntime: Calling main entry com.android.commands.input.Input
+10-20 06:12:37.236  6727  6727 D AndroidRuntime: Shutting down VM
+10-20 06:12:39.827  6749  6749 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+10-20 06:12:39.831  6749  6749 I AndroidRuntime: Using default boot image
+10-20 06:12:39.831  6749  6749 I AndroidRuntime: Leaving lock profiling enabled
+10-20 06:12:39.882  6749  6749 D AndroidRuntime: Calling main entry com.android.commands.uiautomator.Launcher
+10-20 06:12:40.911  6749  6749 D AndroidRuntime: Shutting down VM
+10-20 06:12:41.430  6765  6765 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+10-20 06:12:41.431  6765  6765 I AndroidRuntime: Using default boot image
+10-20 06:12:41.431  6765  6765 I AndroidRuntime: Leaving lock profiling enabled
+10-20 06:12:41.479  6765  6765 D AndroidRuntime: Calling main entry com.android.commands.input.Input
+10-20 06:12:41.485  6765  6765 D AndroidRuntime: Shutting down VM
+10-20 06:12:41.577  1326  1326 I AndroidIME: AbstractIme.onActivate():84 LatinIme.onActivate() : EditorInfo = Package = com.wolfiegoesai.chipburner : Type = Text : Learning = Disable : Suggestion = Show : AutoCorrection = Enable : Microphone = Show : NoPersonalizedLearning = Disable : AutoStartVoiceInput = Disable, IncognitoMode = false
+10-20 06:12:41.594  1326  1326 I ConversationToQueryExtension: ConversationToQueryExtension.isEnabledForHostApp():252 Conv2Query not enabled due to current app [com.wolfiegoesai.chipburner] not in whitelist
+10-20 06:12:44.944  6781  6781 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+10-20 06:12:44.945  6781  6781 I AndroidRuntime: Using default boot image
+10-20 06:12:44.945  6781  6781 I AndroidRuntime: Leaving lock profiling enabled
+10-20 06:12:44.992  6781  6781 D AndroidRuntime: Calling main entry com.android.commands.input.Input
+10-20 06:12:45.023  6781  6781 D AndroidRuntime: Shutting down VM
+10-20 06:12:47.645  6802  6802 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+10-20 06:12:47.656  6802  6802 I AndroidRuntime: Using default boot image
+10-20 06:12:47.657  6802  6802 I AndroidRuntime: Leaving lock profiling enabled
+10-20 06:12:47.707  6802  6802 D AndroidRuntime: Calling main entry com.android.commands.input.Input
+10-20 06:12:47.711  6802  6802 D AndroidRuntime: Shutting down VM
+10-20 06:12:49.164  6815  6815 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+10-20 06:12:49.166  6815  6815 I AndroidRuntime: Using default boot image
+10-20 06:12:49.166  6815  6815 I AndroidRuntime: Leaving lock profiling enabled
+10-20 06:12:49.213  6815  6815 D AndroidRuntime: Calling main entry com.android.commands.uiautomator.Launcher
+10-20 06:12:50.241  6815  6815 D AndroidRuntime: Shutting down VM
+10-20 06:12:50.721  6831  6831 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+10-20 06:12:50.722  6831  6831 I AndroidRuntime: Using default boot image
+10-20 06:12:50.722  6831  6831 I AndroidRuntime: Leaving lock profiling enabled
+10-20 06:12:50.769  6831  6831 D AndroidRuntime: Calling main entry com.android.commands.input.Input
+10-20 06:12:50.774  6831  6831 D AndroidRuntime: Shutting down VM
+total 560
+drwxr-xr-x  2 runner runner  4096 Oct 20 06:12 .
+drwxr-xr-x 11 runner runner  4096 Oct 20 06:12 ..
+-rw-r--r--  1 runner runner 28281 Oct 20 06:10 1-chip.png
+-rw-r--r--  1 runner runner 45627 Oct 20 06:10 2-search.png
+-rw-r--r--  1 runner runner 30845 Oct 20 06:11 3-chosen.png
+-rw-r--r--  1 runner runner 40701 Oct 20 06:11 4-info.png
+-rw-r--r--  1 runner runner 29316 Oct 20 06:11 4b-pinout.png
+-rw-r--r--  1 runner runner 21787 Oct 20 06:12 4c-logic-pinout.png
+-rw-r--r--  1 runner runner 26312 Oct 20 06:11 4c0-logic-chip.png
+-rw-r--r--  1 runner runner 25333 Oct 20 06:11 4c1-logic-info.png
+-rw-r--r--  1 runner runner 39358 Oct 20 06:12 4d-ident.png
+-rw-r--r--  1 runner runner 32175 Oct 20 06:12 4e-menu.png
+-rw-r--r--  1 runner runner 37220 Oct 20 06:11 4f-chiptest.png
+-rw-r--r--  1 runner runner 29616 Oct 20 06:12 5-buffer.png
+-rw-r--r--  1 runner runner 31836 Oct 20 06:12 6-test.png
+-rw-r--r--  1 runner runner 38281 Oct 20 06:12 6b-extended.png
+-rw-r--r--  1 runner runner 30860 Oct 20 06:12 6c-logic-search.png
+-rw-r--r--  1 runner runner 44169 Oct 20 06:12 7-log.png
