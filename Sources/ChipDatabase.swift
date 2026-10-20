@@ -30,6 +30,9 @@ struct ChipInfo {
     var configName = ""    // name of the fuse/lock layout in <configurations>, "" if none
     var flags: UInt32 = 0  // minipro device flags (bit 0x10 = chip has an erase command)
     var hasFlags = false
+    var userSize = 0       // data_memory2_size: the user row / second data area minipro reads with -c user
+    /// minipro's MP_CALIBRATION device flag: the chip has calibration bytes (-c calibration).
+    var hasCalibration: Bool { flags & 0x0008_0000 != 0 }
     /// nil when the database entry carries no flags.
     var canErase: Bool? { hasFlags ? (flags & 0x10) != 0 : nil }
     /// Lock bits can be written but not read back (MP_LOCK_BIT_WRITE_ONLY).
@@ -292,6 +295,7 @@ final class ChipDatabase {
                     var info = ChipInfo(name: name, kind: database == "LOGIC" ? .logic : kind, chipID: id,
                                         codeSize: code, dataSize: data, database: database, pins: pins)
                     info.flags = flags
+                    info.userSize = Int(hex(attr["data_memory2_size"]))
                     let cfg = attr["config"] ?? ""
                     info.configName = cfg == "NULL" ? "" : cfg
                     info.hasFlags = flagText != nil

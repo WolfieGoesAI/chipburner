@@ -619,7 +619,34 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSTextFi
         }
         stopButton?.isEnabled = isBusy
         chipField.isEnabled = !isBusy
-        memoryPopup.isEnabled = !isBusy
+        updateMemoryAndConnection()
+    }
+
+    /// Memory areas the selected chip has, in `memoryTypes` order: code, data, config, user row, calibration.
+    private var availableMemoryTypes: [Bool] {
+        guard let i = chipDetails, i.kind != .logic else { return [true, false, false, false, false] }
+        return [true, i.dataSize > 0, currentConfig != nil, i.userSize > 0, i.hasCalibration]
+    }
+
+    /// Memory and Connection are only active for chips that have more than code memory / support ICSP (like
+    /// Fuses & Locks). Otherwise they go back to "Code (main memory)" and "ZIF socket" and are greyed out.
+    private func updateMemoryAndConnection() {
+        let mem = availableMemoryTypes
+        memoryPopup.autoenablesItems = false
+        for (i, item) in memoryPopup.itemArray.enumerated() { item.isEnabled = i < mem.count && mem[i] }
+        let sel = memoryPopup.indexOfSelectedItem
+        if sel < 0 || sel >= mem.count || !mem[sel] { memoryPopup.selectItem(at: 0) }
+        let hasOtherAreas = mem.dropFirst().contains(true)
+        memoryPopup.isEnabled = !isBusy && hasOtherAreas
+        memoryPopup.toolTip = hasOtherAreas ? "The memory area Read, Verify and Program work on. Areas this chip doesn't have are greyed out."
+                                            : "The selected chip has only its main memory."
+
+        // ICSP support comes from `minipro -d` (looked up in the background when the chip changes).
+        let icsp = chipDetails?.kind != .logic && currentCaps?.icspSupported == true
+        if !icsp && connectionPopup.indexOfSelectedItem != 0 { connectionPopup.selectItem(at: 0) }
+        connectionPopup.isEnabled = !isBusy && icsp
+        connectionPopup.toolTip = icsp ? "ZIF socket, or in-circuit programming (ICSP) through the programmer's ICSP cable."
+                                       : "The selected chip can only be used in the ZIF socket."
     }
 
     /// Shows a newly loaded or read buffer in the editor (and starts a fresh undo history).
